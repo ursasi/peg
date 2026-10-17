@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Peg — screenshot, annotate, pin, clothesline" width="100%">
+  <img src="docs/banner.png" alt="Peg — a free screenshot tool for macOS" width="100%">
 </p>
 
 <h1 align="center">Peg</h1>
 
 <p align="center">
-  A macOS screenshot tool that keeps your captures on a clothesline.
+  A free, open-source screenshot tool for macOS.
 </p>
 
 <p align="center">
@@ -19,12 +19,13 @@
   <a href="README.zh-CN.md">中文说明</a>
 </p>
 
-Peg pins recent screenshots to a rope under the menu bar — like a clothesline.
-Grab a shot, draw on it, keep it on screen, stitch a long page together, or
-record a short GIF; everything lands on the line and stays a click away.
+Peg sits in the menu bar and does the everyday screenshot work: frame a
+region or a window, mark it up, keep it floating, stitch a long page, record a
+short GIF. Recent shots hang on a line under the menu bar — a clothesline,
+borrowed from the idea in [Tendedero](https://github.com/mrthomaswebb/tendedero).
 
-Built with AppKit only. No Electron, no account, no network, no analytics, no
-auto-updater. Screen Recording is the only permission it asks for.
+Built with AppKit only. Free to use and modify, no account, no network, no
+analytics, no auto-updater. Screen Recording is the only permission it asks for.
 
 ## Features
 
@@ -35,7 +36,7 @@ auto-updater. Screen Recording is the only permission it asks for.
 | **Inline annotation** | 8 tools (rectangle, ellipse, arrow, pen, marker, text, mosaic, blur) drawn straight onto the frozen screen. What you draw is what you get. |
 | **Scroll capture** | Manually scroll a region; frames are aligned by row fingerprints and stitched, both downwards and upwards. |
 | **GIF recording** | Frame a region, record up to 20 s at 12 fps, stop with the same shortcut. A red frame shows exactly what is being recorded. |
-| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere, double-click to open. |
+| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere, double-click to open. The clothesline idea comes from Tendedero. |
 | **Pins** | Any shot can float above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. |
 | **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
 | **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon. |

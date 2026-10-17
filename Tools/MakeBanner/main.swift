@@ -34,12 +34,12 @@ NSAttributedString(string: "Peg", attributes: [
     .kern: -2
 ]).draw(at: NSPoint(x: 372, y: 192))
 
-NSAttributedString(string: "Screenshot · annotate · pin · clothesline", attributes: [
+NSAttributedString(string: "A free screenshot tool for macOS", attributes: [
     .font: NSFont.systemFont(ofSize: 30, weight: .medium),
     .foregroundColor: NSColor.white.withAlphaComponent(0.80)
 ]).draw(at: NSPoint(x: 376, y: 140))
 
-NSAttributedString(string: "scroll capture · long shots · GIF recording · macOS 14+", attributes: [
+NSAttributedString(string: "snip · annotate · pin · clothesline · long shots · GIF", attributes: [
     .font: NSFont.monospacedSystemFont(ofSize: 19, weight: .regular),
     .foregroundColor: NSColor.white.withAlphaComponent(0.45)
 ]).draw(at: NSPoint(x: 378, y: 96))
