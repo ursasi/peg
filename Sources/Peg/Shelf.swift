@@ -248,8 +248,9 @@ final class Shelf {
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return }
 
         if !isShown {
-            // Rest the pointer on the very top edge to pull the line down.
-            if point.y >= screen.frame.maxY - 2 {
+            // Anywhere in the menu bar pulls the line down (the same gesture
+            // Tendedero uses), not just the last two pixels of the display.
+            if point.y >= screen.visibleFrame.maxY - 1 {
                 reveal(on: screen)
             }
             return

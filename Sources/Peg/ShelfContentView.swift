@@ -5,6 +5,7 @@ import AppKit
 /// toolchain (which ships no SwiftUI macro plugin) can build it.
 final class ShelfContentView: NSView {
     private let effect = NSVisualEffectView()
+    private let dim = NSView()
     private let header = NSTextField(labelWithString: "")
     private let hint = NSTextField(labelWithString: "⌃⌥X 截图　·　点图复制　·　双击打开　·　拖出去用　·　⌃⌥S 收起")
     private let emptyLabel = NSTextField(labelWithString: "按 ⌃⌥X 截一张，它就挂在这儿")
@@ -31,10 +32,10 @@ final class ShelfContentView: NSView {
         effect.autoresizingMask = [.width, .height]
         addSubview(effect)
 
-        let dim = NSView()
+        // The material follows whatever is behind it; without a solid tint the
+        // white-on-white case makes the shelf unreadable.
         dim.wantsLayer = true
-        dim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
-        dim.autoresizingMask = [.width, .height]
+        dim.layer?.backgroundColor = NSColor(calibratedWhite: 0.06, alpha: 0.82).cgColor
         addSubview(dim)
 
         header.attributedStringValue = NSAttributedString(
@@ -47,12 +48,12 @@ final class ShelfContentView: NSView {
         addSubview(header)
 
         hint.font = .systemFont(ofSize: 10)
-        hint.textColor = NSColor.white.withAlphaComponent(0.38)
+        hint.textColor = NSColor.white.withAlphaComponent(0.45)
         hint.alignment = .right
         addSubview(hint)
 
         emptyLabel.font = .systemFont(ofSize: 12)
-        emptyLabel.textColor = NSColor.white.withAlphaComponent(0.45)
+        emptyLabel.textColor = NSColor.white.withAlphaComponent(0.55)
         addSubview(emptyLabel)
 
         scroll.drawsBackground = false
@@ -84,6 +85,7 @@ final class ShelfContentView: NSView {
         super.layout()
         let pad: CGFloat = 18
         effect.frame = bounds
+        dim.frame = bounds
         header.sizeToFit()
         header.frame.origin = NSPoint(x: pad, y: bounds.height - 22)
         hint.sizeToFit()
