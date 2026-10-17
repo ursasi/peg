@@ -104,13 +104,16 @@ final class PinController {
 }
 
 final class PinWindow: NSPanel {
+    /// Room around the picture for the drop shadow and the corner outline.
+    static let padding: CGFloat = 14
+
     var onClose: (() -> Void)?
     private var pixelSize: NSSize
     private var scale: CGFloat = 1
 
     init(image: CGImage, frame: CGRect) {
         pixelSize = NSSize(width: image.width, height: image.height)
-        super.init(contentRect: frame,
+        super.init(contentRect: frame.insetBy(dx: -Self.padding, dy: -Self.padding),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered,
                    defer: false)
@@ -119,14 +122,14 @@ final class PinWindow: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = true
+        // Our own shadow is drawn inside the view: the window shadow alone is
+        // too soft to separate a white screenshot from a white background.
+        hasShadow = false
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
 
         let view = PinImageView(image: image)
         view.wantsLayer = true
-        view.layer?.cornerRadius = 6
-        view.layer?.masksToBounds = true
         view.onZoom = { [weak self] delta in self?.zoom(by: delta) }
         view.onCopy = { Clip.copy(image) }
         view.onCloseWindow = { [weak self] in self?.close() }
@@ -190,8 +193,38 @@ final class PinImageView: NSView {
     override var acceptsFirstResponder: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
+        let content = bounds.insetBy(dx: PinWindow.padding, dy: PinWindow.padding)
+        guard content.width > 0, content.height > 0 else { return }
+        let radius = max(4, min(12, content.width * 0.02))
+        let shape = NSBezierPath(roundedRect: content, xRadius: radius, yRadius: radius)
+
+        // Shadow first, then the picture on top.
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
+        shadow.shadowBlurRadius = 18
+        shadow.shadowOffset = NSSize(width: 0, height: -3)
+        shadow.set()
+        NSColor.white.setFill()
+        shape.fill()
+        NSShadow().set()
+
+        NSGraphicsContext.saveGraphicsState()
+        shape.addClip()
         NSGraphicsContext.current?.imageInterpolation = .high
-        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)).draw(in: bounds)
+        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)).draw(in: content)
+        NSGraphicsContext.restoreGraphicsState()
+
+        // Two hairlines, light outside and dark inside, so the edge shows up on
+        // both a white page and a dark wallpaper.
+        let outer = NSBezierPath(roundedRect: content.insetBy(dx: -0.5, dy: -0.5),
+                                 xRadius: radius + 0.5, yRadius: radius + 0.5)
+        outer.lineWidth = 1
+        NSColor.white.withAlphaComponent(0.30).setStroke()
+        outer.stroke()
+
+        shape.lineWidth = 1
+        NSColor.black.withAlphaComponent(0.28).setStroke()
+        shape.stroke()
     }
 
     override func mouseDown(with event: NSEvent) {

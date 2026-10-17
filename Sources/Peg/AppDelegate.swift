@@ -124,6 +124,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "history": HistoryWindow.shared.show()
         case "shelf": Shelf.shared.toggle()
         case "settings": SettingsWindow.shared.show()
+        case "closepins":
+            PinController.shared.closeAll()
+        case "pin":
+            if !PinController.shared.pinNextOlder() {
+                DebugLog.log("pin: nothing in history")
+            }
         case "cancel": SnipSession.shared.cancel()
         case _ where debugCommand.hasPrefix("key:"):
             if let code = UInt16(debugCommand.dropFirst("key:".count)) { SnipSession.shared.debugKey(code) }

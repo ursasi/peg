@@ -39,6 +39,8 @@ enum ShelfMetrics {
     /// "floating in front of a line".
     static var ropeOffset: CGFloat { (4 * scale).rounded() }
     static var side: CGFloat { (26 * scale).rounded() }
+    /// A line of tiny type under every sheet: when it was taken.
+    static var stampHeight: CGFloat { (11 * scale).rounded() }
 }
 
 /// The clothesline: a rope that sags under the menu bar with shots pegged to
@@ -50,7 +52,7 @@ final class ShelfContentView: NSView {
 
     static var height: CGFloat {
         ropeTop + 30 + ShelfMetrics.pegHeight + ShelfMetrics.cardMaxHeight
-            + ShelfMetrics.inset * 2 + 10
+            + ShelfMetrics.inset * 2 + ShelfMetrics.stampHeight + 10
     }
 
     static func ropeY(x: CGFloat, width: CGFloat) -> CGFloat {
@@ -343,7 +345,7 @@ extension ShotItem {
             hash = (hash ^ UInt64(byte)) &* 1_099_511_628_211
         }
         let unit = CGFloat(hash % 1000) / 1000 - 0.5
-        return unit * 0.055   // about ±1.6°
+        return unit * 0.02   // about ±0.6°: hung by hand, not swaying
     }
 }
 
@@ -397,7 +399,8 @@ final class ThumbView: NSView, NSDraggingSource {
             }
         }
         return NSSize(width: max(44, width) + ShelfMetrics.inset * 2,
-                      height: max(26, height) + ShelfMetrics.inset * 2 + ShelfMetrics.pegHeight)
+                      height: max(26, height) + ShelfMetrics.inset * 2
+                          + ShelfMetrics.pegHeight + ShelfMetrics.stampHeight)
     }
 
     // MARK: - Motion
@@ -415,7 +418,7 @@ final class ThumbView: NSView, NSDraggingSource {
                 timer.invalidate()
                 self.dropTimer = nil
                 self.dropOffset = 0
-                self.nudge(5)
+                self.nudge(3)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -430,7 +433,7 @@ final class ThumbView: NSView, NSDraggingSource {
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
             let elapsed = Date().timeIntervalSince(start)
-            if elapsed > 1.5 {
+            if elapsed > 1.2 {
                 timer.invalidate()
                 self.swingTimer = nil
                 self.swing = 0
@@ -498,7 +501,7 @@ final class ThumbView: NSView, NSDraggingSource {
         let cardTop = ShelfMetrics.pegHeight
         let card = CGRect(x: 0, y: cardTop,
                           width: bounds.width,
-                          height: bounds.height - cardTop)
+                          height: bounds.height - cardTop - ShelfMetrics.stampHeight)
 
         // Rotate around the point where the peg holds the card.
         context.saveGState()
@@ -626,7 +629,43 @@ final class ThumbView: NSView, NSDraggingSource {
         let border = NSBezierPath(roundedRect: frameRect, xRadius: 8, yRadius: 8)
         border.lineWidth = 1
         border.stroke()
+
+        drawStamp(below: card)
     }
+
+    /// Time the shot was taken, in type small enough to read as a caption and
+    /// not as a label competing with the picture.
+    private func drawStamp(below card: CGRect) {
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.75)
+        shadow.shadowBlurRadius = 3
+        shadow.shadowOffset = NSSize(width: 0, height: 1)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .medium),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.62),
+            .shadow: shadow
+        ]
+        // Today's shots only need a time; older ones need the date too.
+        let formatter = Calendar.current.isDateInToday(item.created) ? Self.timeOnly : Self.withDate
+        let text = formatter.string(from: item.created) as NSString
+        let size = text.size(withAttributes: attributes)
+        let y = card.maxY - ShelfMetrics.stampHeight / 2 - size.height / 2
+        text.draw(at: NSPoint(x: card.midX - size.width / 2, y: y), withAttributes: attributes)
+    }
+
+    private static let timeOnly: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let withDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "M月d日 HH:mm"
+        return formatter
+    }()
 
     // MARK: - Mouse
 

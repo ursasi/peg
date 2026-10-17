@@ -74,6 +74,12 @@ enum Prefs {
         set { UserDefaults.standard.set(newValue, forKey: "historyDays") }
     }
 
+    /// Round the corners of every capture. On unless the user turns it off.
+    static var roundedCorners: Bool {
+        get { UserDefaults.standard.object(forKey: "roundedCorners") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "roundedCorners") }
+    }
+
     /// Copy every snip to the clipboard without being asked.
     static var autoCopy: Bool {
         get { UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true }
@@ -95,6 +101,7 @@ final class SettingsWindow: NSWindowController {
     private let qualitySlider = NSSlider(value: Prefs.quality, minValue: 0.5, maxValue: 1, target: nil, action: nil)
     private let qualityLabel = NSTextField(labelWithString: "")
     private let copyCheck = NSButton(checkboxWithTitle: "截图后自动复制到剪贴板", target: nil, action: nil)
+    private let roundCheck = NSButton(checkboxWithTitle: "截图四角改成圆角", target: nil, action: nil)
     private let retentionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
     init() {
@@ -182,6 +189,8 @@ final class SettingsWindow: NSWindowController {
         clipTitle.font = .systemFont(ofSize: 12, weight: .semibold)
         copyCheck.target = self
         copyCheck.action = #selector(copyChanged)
+        roundCheck.target = self
+        roundCheck.action = #selector(roundChanged)
 
         let note = NSTextField(wrappingLabelWithString:
             "截图　⌃⌥X 直接复制并保存　⌃⌥A 带标注工具\n"
@@ -191,7 +200,7 @@ final class SettingsWindow: NSWindowController {
         note.textColor = .secondaryLabelColor
 
         for view in [folderTitle, folderRow, formatTitle, formatControl, qualityRow,
-                     historyTitle, retentionRow, clipTitle, copyCheck, note] {
+                     historyTitle, retentionRow, clipTitle, copyCheck, roundCheck, note] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
@@ -208,6 +217,7 @@ final class SettingsWindow: NSWindowController {
         let days = Prefs.historyDays
         retentionPopup.selectItem(at: days == 0 ? 3 : days <= 7 ? 0 : days <= 30 ? 1 : 2)
         copyCheck.state = Prefs.autoCopy ? .on : .off
+        roundCheck.state = Prefs.roundedCorners ? .on : .off
     }
 
     @objc private func chooseFolder() {
@@ -241,6 +251,10 @@ final class SettingsWindow: NSWindowController {
         let values = [7, 30, 90, 0]
         Prefs.historyDays = values[max(0, min(3, retentionPopup.indexOfSelectedItem))]
         _ = HistoryStore.purge()
+    }
+
+    @objc private func roundChanged() {
+        Prefs.roundedCorners = roundCheck.state == .on
     }
 
     @objc private func copyChanged() {

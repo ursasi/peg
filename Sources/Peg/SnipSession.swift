@@ -491,18 +491,19 @@ final class SnipSession {
         let flattened = flatten(cropped.image,
                                 selection: cropped.localRect,
                                 scale: CGFloat(cropped.image.width) / max(1, cropped.localRect.width))
+        let finished = Rounded.apply(flattened)
         dismiss()
 
         switch finish {
         case .copyAndSave:
             DebugLog.log("saved \(flattened.width)x\(flattened.height) marks=\(cropped.image.width > 0)")
-            if Prefs.autoCopy { Clip.copy(flattened) }
-            if let url = Storage.save(flattened) {
+            if Prefs.autoCopy { Clip.copy(finished) }
+            if let url = Storage.save(finished) {
                 Shelf.shared.insert(url)
             }
             Shelf.shared.flash()
         case .pin:
-            PinController.shared.pin(flattened, at: onScreen)
+            PinController.shared.pin(finished, at: onScreen)
         }
     }
 
