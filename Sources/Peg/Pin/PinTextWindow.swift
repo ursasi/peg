@@ -5,7 +5,6 @@ import AppKit
 /// the rest. Styled like a pinned screenshot so the two read as the same thing.
 final class PinTextWindow: NSPanel {
     static let padding: CGFloat = 14
-    private static let maxWidth: CGFloat = 460
 
     var onClose: (() -> Void)?
     private let text: String
@@ -14,15 +13,13 @@ final class PinTextWindow: NSPanel {
 
     /// Size the window wants before it is placed on screen.
     var documentSize: NSSize {
-        let body = surface.intrinsicSize(forWidth: Self.maxWidth, fontSize: fontSize)
-        return NSSize(width: body.width + Self.padding * 2,
-                      height: body.height + Self.padding * 2)
+        surface.documentSize(fontSize: fontSize)
     }
 
     init(text: String) {
         self.text = text
         surface = PinTextSurface(text: text, fontSize: 14)
-        let size = NSSize(width: Self.maxWidth, height: 120)
+        let size = NSSize(width: 480, height: 120)
         super.init(contentRect: NSRect(origin: .zero, size: size),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered,
@@ -92,12 +89,20 @@ final class PinTextSurface: NSView {
 
     private let textView = NSTextView()
     private let text: String
+    private let lines: [String]
+
+    /// Room for the traffic lights at the top of the card.
+    private static let titleHeight: CGFloat = 30
+    private static let padding: CGFloat = 18
+    private static let maxWidth: CGFloat = 900
+
     var fontSize: CGFloat {
-        didSet { applyFont() }
+        didSet { applyText() }
     }
 
     init(text: String, fontSize: CGFloat) {
         self.text = text
+        self.lines = text.components(separatedBy: "\n")
         self.fontSize = fontSize
         super.init(frame: .zero)
         textView.isEditable = false
@@ -108,8 +113,7 @@ final class PinTextSurface: NSView {
         textView.isHorizontallyResizable = false
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
-        textView.string = text
-        applyFont()
+        applyText()
         addSubview(textView)
     }
 
@@ -118,52 +122,113 @@ final class PinTextSurface: NSView {
 
     override var isFlipped: Bool { true }
 
-    private func applyFont() {
-        textView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        textView.textColor = NSColor(calibratedWhite: 0.12, alpha: 1)
+    // MARK: - Metrics
+
+    private var lineHeight: CGFloat { CodeStyle.lineHeight(size: fontSize) }
+
+    /// Width of the widest line plus the gutter, capped so a long line wraps
+    /// instead of pushing the card off the screen.
+    private var contentWidth: CGFloat {
+        let font = CodeStyle.font(size: fontSize)
+        let widest = lines.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return min(Self.maxWidth, ceil(widest) + 4)
     }
 
-    /// Height the text needs at a given width.
-    func intrinsicSize(forWidth width: CGFloat, fontSize: CGFloat) -> NSSize {
-        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        let attributes: [NSAttributedString.Key: Any] = [.font: font]
-        let bounding = (text as NSString).boundingRect(
-            with: NSSize(width: width, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: attributes)
-        let lines = max(1, ceil(bounding.height / font.ascender))
-        let height = min(bounding.height + 4, max(60, lines * font.ascender + 8))
-        return NSSize(width: width, height: max(48, height))
+    private var gutterWidth: CGFloat {
+        let font = CodeStyle.font(size: fontSize)
+        let digits = max(2, String(lines.count).count)
+        return ceil(("8" as NSString).size(withAttributes: [.font: font]).width) * CGFloat(digits) + 12
+    }
+
+    func documentSize(fontSize: CGFloat) -> NSSize {
+        let saved = self.fontSize
+        self.fontSize = fontSize
+        defer { self.fontSize = saved }
+
+        let textHeight = max(1, CGFloat(lines.count)) * lineHeight
+        let width = Self.padding * 2 + gutterWidth + contentWidth + 8
+        let height = Self.padding * 2 + Self.titleHeight + textHeight + 6
+        return NSSize(width: min(width, Self.maxWidth + 80), height: height)
+    }
+
+    private func applyText() {
+        textView.textStorage?.setAttributedString(CodeStyle.highlight(text, size: fontSize))
+        textView.textColor = CodeStyle.plain
+        needsLayout = true
+        needsDisplay = true
     }
 
     override func layout() {
         super.layout()
-        textView.frame = bounds.insetBy(dx: PinTextWindow.padding, dy: PinTextWindow.padding)
+        let top = Self.padding + Self.titleHeight
+        textView.frame = NSRect(x: Self.padding + gutterWidth,
+                                y: top,
+                                width: max(40, bounds.width - Self.padding * 2 - gutterWidth),
+                                height: max(10, bounds.height - top - Self.padding))
     }
 
+    // MARK: - Drawing
+
     override func draw(_ dirtyRect: NSRect) {
-        let content = bounds.insetBy(dx: PinTextWindow.padding, dy: PinTextWindow.padding)
-        let radius: CGFloat = 10
+        let card = bounds.insetBy(dx: PinTextWindow.padding, dy: PinTextWindow.padding)
+        let radius = max(8, min(14, card.width * 0.02))
 
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.5)
-        shadow.shadowBlurRadius = 16
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
+        shadow.shadowBlurRadius = 18
         shadow.shadowOffset = NSSize(width: 0, height: -3)
         shadow.set()
-        NSColor(calibratedWhite: 0.99, alpha: 1).setFill()
-        NSBezierPath(roundedRect: content, xRadius: radius, yRadius: radius).fill()
+        CodeStyle.background.setFill()
+        NSBezierPath(roundedRect: card, xRadius: radius, yRadius: radius).fill()
         NSShadow().set()
 
-        let outer = NSBezierPath(roundedRect: content.insetBy(dx: -0.5, dy: -0.5),
-                                 xRadius: radius + 0.5, yRadius: radius + 0.5)
-        outer.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.3).setStroke()
-        outer.stroke()
-
-        let edge = NSBezierPath(roundedRect: content, xRadius: radius, yRadius: radius)
+        CodeStyle.border.setStroke()
+        let edge = NSBezierPath(roundedRect: card.insetBy(dx: 0.5, dy: 0.5),
+                                xRadius: radius, yRadius: radius)
         edge.lineWidth = 1
-        NSColor.black.withAlphaComponent(0.2).setStroke()
         edge.stroke()
+
+        drawTrafficLights(in: card)
+        drawGutter(in: card)
+    }
+
+    private func drawTrafficLights(in card: CGRect) {
+        let diameter = max(7, fontSize * 0.55)
+        let gap = diameter * 0.55
+        var x = card.minX + Self.padding
+        let y = card.minY + Self.padding * 0.55
+        for colour in CodeStyle.trafficLights {
+            colour.setFill()
+            NSBezierPath(ovalIn: CGRect(x: x, y: y, width: diameter, height: diameter)).fill()
+            x += diameter + gap
+        }
+    }
+
+    /// Line numbers, placed from the layout manager's own line fragments so
+    /// they follow wrapped lines and blank lines exactly.
+    private func drawGutter(in card: CGRect) {
+        guard let layoutManager = textView.layoutManager,
+              let container = textView.textContainer else { return }
+        layoutManager.ensureLayout(for: container)
+
+        let font = CodeStyle.font(size: fontSize * 0.92)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: CodeStyle.gutter
+        ]
+        let textOrigin = textView.frame.origin
+        let columnRight = Self.padding + gutterWidth - 12
+        var character = 0
+        for (index, line) in lines.enumerated() {
+            let glyph = layoutManager.glyphIndexForCharacter(at: min(character, max(0, textView.string.utf16.count - 1)))
+            let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let label = "\(index + 1)" as NSString
+            let size = label.size(withAttributes: attributes)
+            let y = textOrigin.y + fragment.minY + (fragment.height - size.height) / 2
+            label.draw(at: NSPoint(x: columnRight - size.width, y: y), withAttributes: attributes)
+            character += (line as NSString).length + 1
+            if character >= textView.string.utf16.count { break }
+        }
     }
 
     /// The card drags as one piece; hold ⌥ to select text instead. Without
