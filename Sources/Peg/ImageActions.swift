@@ -12,6 +12,12 @@ enum Clip {
         pasteboard.setString("", forType: .string) // keep text tools from pasting stale text
     }
 
+    static func copy(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
     static func copy(contentsOf url: URL) {
         if let image = NSImage(contentsOf: url) {
             let pasteboard = NSPasteboard.general

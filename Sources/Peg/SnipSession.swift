@@ -190,6 +190,9 @@ final class SnipSession {
         case 49: // space: annotate before committing
             openEditor()
             return true
+        case 17: // t: read the text in the selection
+            recognizeText()
+            return true
         case 35: // p
             commit(.pin)
             return true
@@ -225,6 +228,23 @@ final class SnipSession {
         let screen = cropped.screen
         dismiss()
         AnnotationEditor.shared.present(image: cropped.image, on: screen)
+    }
+
+    private func recognizeText() {
+        guard let cropped = cropSelection() else { return }
+        let screen = cropped.screen
+        let rect = cropped.onScreen
+        dismiss()
+        Shelf.shared.hideNow(animated: false)
+
+        Task { @MainActor in
+            guard let text = await OCREngine.recognize(cropped.image) else {
+                NSSound.beep()
+                return
+            }
+            Clip.copy(text)
+            OCRPanel.shared.show(text: text, near: rect, on: screen)
+        }
     }
 
     private func cropSelection() -> (image: CGImage, screen: NSScreen, onScreen: CGRect)? {

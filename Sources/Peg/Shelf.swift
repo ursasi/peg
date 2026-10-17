@@ -96,6 +96,24 @@ final class Shelf {
         if items.count > limit { items.removeLast(items.count - limit) }
     }
 
+    private func recognize(_ item: ShotItem) {
+        guard let image = NSImage(contentsOf: item.url)?
+            .cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        let screen = Displays.underMouse() ?? NSScreen.main
+        Task { @MainActor in
+            guard let text = await OCREngine.recognize(image), let screen else {
+                NSSound.beep()
+                return
+            }
+            Clip.copy(text)
+            var near = CGRect(x: 240, y: 240, width: 300, height: 120)
+            if let frame = panel?.frame {
+                near = CGRect(x: frame.minX + 20, y: frame.minY, width: 300, height: 120)
+            }
+            OCRPanel.shared.show(text: text, near: near, on: screen)
+        }
+    }
+
     private func saveToDesktop(_ item: ShotItem) {
         guard let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first else { return }
         let target = desktop.appendingPathComponent(item.url.lastPathComponent)
@@ -210,6 +228,7 @@ final class Shelf {
         content.onReveal = { item in Storage.reveal(item.url) }
         content.onSaveToDesktop = { [weak self] item in self?.saveToDesktop(item) }
         content.onTrash = { [weak self] item in self?.remove(item) }
+        content.onOCR = { [weak self] item in self?.recognize(item) }
         content.setItems(items)
         self.content = content
         panel.contentView = content

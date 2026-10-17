@@ -17,6 +17,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated { Shelf.shared.reveal(autoHideAfter: 30) }
             }
+        case "ocr":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                MainActor.assumeIsolated {
+                    guard let screen = NSScreen.main,
+                          let image = OCRSample.image("PEG OCR 123") else { return }
+                    Task { @MainActor in
+                        guard let text = await OCREngine.recognize(image) else { return }
+                        Clip.copy(text)
+                        OCRPanel.shared.show(text: text,
+                                             near: CGRect(x: 240, y: 240, width: 300, height: 120),
+                                             on: screen)
+                    }
+                }
+            }
         case "annotate":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated {

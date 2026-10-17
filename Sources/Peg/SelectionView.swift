@@ -199,7 +199,7 @@ final class SelectionView: NSView {
     }
 
     private func drawHint() {
-        let text = "拖拽选区　⏎ 复制并保存　空格 标注　P 贴到屏幕\nL 滚动长截图　Esc 取消"
+        let text = "拖拽选区　⏎ 复制并保存　空格 标注　P 贴到屏幕\nT 识别文字　L 滚动长截图　Esc 取消"
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineSpacing = 4
