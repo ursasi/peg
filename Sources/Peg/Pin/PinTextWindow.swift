@@ -166,10 +166,25 @@ final class PinTextSurface: NSView {
         edge.stroke()
     }
 
+    /// The card drags as one piece; hold ⌥ to select text instead. Without
+    /// this the text view swallowed every press and the pin could not be moved.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = superview.map { convert(point, from: $0) } ?? point
+        guard bounds.contains(local) else { return nil }
+        if NSEvent.modifierFlags.contains(.option) {
+            return super.hitTest(point)
+        }
+        return self
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeKey()
         if event.clickCount == 2 {
             onCloseWindow?()
+            return
+        }
+        if event.modifierFlags.contains(.option) {
+            super.mouseDown(with: event)
             return
         }
         window?.performDrag(with: event)
@@ -181,8 +196,11 @@ final class PinTextSurface: NSView {
 
     override func rightMouseDown(with event: NSEvent) {
         let menu = NSMenu()
-        let copy = ClosureMenuItem(title: "复制文字") { [weak self] in self?.onCopy?() }
+        let copy = ClosureMenuItem(title: "复制全部文字") { [weak self] in self?.onCopy?() }
         menu.addItem(copy)
+        let hint = NSMenuItem(title: "按住 ⌥ 拖动可选中文字", action: nil, keyEquivalent: "")
+        hint.isEnabled = false
+        menu.addItem(hint)
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(title: "关闭") { [weak self] in self?.onCloseWindow?() })
         NSMenu.popUpContextMenu(menu, with: event, for: self)
