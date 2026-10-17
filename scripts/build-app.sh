@@ -28,7 +28,8 @@ fi
 cp "$COMPILED" "$BIN"
 
 # Generated icon: the mark lives in Tools/MakeIcon, not in a binary asset.
-swiftc -O Tools/MakeIcon/main.swift -o build/makeicon >/dev/null 2>&1
+swiftc -O Tools/Design/PegMark.swift Tools/MakeIcon/main.swift \
+    -o build/makeicon >/tmp/peg-icon.log 2>&1
 if [ -x build/makeicon ] && build/makeicon "$APP/Contents/Resources" >/dev/null 2>&1; then
     echo "icon: generated"
 else
@@ -60,12 +61,17 @@ PLIST
 
 # Prefer a real signing identity: TCC remembers Screen Recording per identity,
 # so re-granting after every rebuild is only necessary with ad-hoc signing.
-IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(.*\)"/\1/p' | head -1)"
+# `head` closes the pipe early, which under `pipefail` makes the whole
+# substitution look like a failure and leaves IDENTITY empty.
+IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(.*\)"/\1/p' | sed -n '1p')"
 if [ -n "${IDENTITY}" ]; then
-    codesign --force --sign "$IDENTITY" "$APP" >/dev/null 2>&1 || \
-    codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+    if ! codesign --force --sign "$IDENTITY" "$APP" 2>/tmp/peg-codesign.log; then
+        echo "sign: could not sign with '$IDENTITY'"
+        sed -n '1,5p' /tmp/peg-codesign.log
+        codesign --force --sign - "$APP" || true
+    fi
 else
-    codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+    codesign --force --sign - "$APP" || true
 fi
 
 echo "built $APP"

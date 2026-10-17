@@ -34,14 +34,6 @@ final class Recorder {
         frames.removeAll()
         started = Date()
 
-        guard let session = await prepare(region: region, on: screen) else {
-            DebugLog.log("record: could not prepare the capture stream")
-            return
-        }
-        filter = session.filter
-        configuration = session.configuration
-        isRecording = true
-
         let hud = RecordHUD()
         hud.onStop = { Recorder.shared.stop() }
         hud.show(near: region, on: screen)
@@ -51,6 +43,21 @@ final class Recorder {
         let border = RecordBorder(region: region, on: screen)
         border.show()
         self.border = border
+
+        // Only the HUD and the frame are excluded: everything else Peg draws
+        // (the clothesline, pinned shots) is fair game to record.
+        let hidden = [hud.windowNumber, border.windowNumber].map { CGWindowID($0) }
+        guard let session = await prepare(region: region, on: screen, hiding: hidden) else {
+            DebugLog.log("record: could not prepare the capture stream")
+            hud.close()
+            border.close()
+            self.hud = nil
+            self.border = nil
+            return
+        }
+        filter = session.filter
+        configuration = session.configuration
+        isRecording = true
         NSSound(named: "Tink")?.play()
 
         task = Task { [weak self] in
@@ -65,18 +72,16 @@ final class Recorder {
     }
 
     /// One capture stream for the recording, sized to the region.
-    private func prepare(region: CGRect, on screen: NSScreen) async -> (filter: SCContentFilter, configuration: SCStreamConfiguration)? {
+    private func prepare(region: CGRect,
+                         on screen: NSScreen,
+                         hiding windowIDs: [CGWindowID]) async -> (filter: SCContentFilter, configuration: SCStreamConfiguration)? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
               let id = Displays.id(of: screen),
               let display = content.displays.first(where: { $0.displayID == id })
         else { return nil }
 
-        // Never record our own overlay or the recording HUD.
-        let myPID = ProcessInfo.processInfo.processIdentifier
-        let myApp = content.applications.first { $0.processID == myPID }
-        let filter = myApp.map {
-            SCContentFilter(display: display, excludingApplications: [$0], exceptingWindows: [])
-        } ?? SCContentFilter(display: display, excludingWindows: [])
+        let excluded = content.windows.filter { windowIDs.contains($0.windowID) }
+        let filter = SCContentFilter(display: display, excludingWindows: excluded)
 
         let scale = screen.backingScaleFactor
         let config = SCStreamConfiguration()

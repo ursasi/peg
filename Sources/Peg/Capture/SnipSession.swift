@@ -63,6 +63,7 @@ final class SnipSession {
     /// The snip hotkey does double duty: while a scroll capture is running it
     /// finishes that instead of starting a new snip.
     func hotKeyPressed(mode: Mode = .markup) {
+        DebugLog.log("hotkey mode=\(mode) recording=\(Recorder.shared.isRecording) scroll=\(ScrollSession.shared.isActive) active=\(isActive) perm=\(Permissions.hasScreenRecording)")
         if Recorder.shared.isRecording {
             Recorder.shared.stop()
             return

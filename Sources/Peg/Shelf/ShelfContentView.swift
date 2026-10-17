@@ -66,7 +66,10 @@ final class ShelfContentView: NSView {
         guard width > 0 else { return ropeTop }
         let f = min(1, max(0, x / width))
         let sag = 4 * ropeSag(width) * f * (1 - f)
-        let pinned = min(1, min(f, 1 - f) * 8)
+        // Only the last couple of percent at each end are flattened, so the
+        // line reads as a wave even when the cards have scrolled away from the
+        // edges. The ends themselves fade out (see RopeView).
+        let pinned = min(1, min(f, 1 - f) * 40)
         let phase = x / waveLength * 2 * .pi + wavePhase
         return ropeTop + sag + sin(phase) * waveAmplitude * pinned
     }
