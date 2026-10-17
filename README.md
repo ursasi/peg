@@ -37,7 +37,7 @@ analytics, no auto-updater. Screen Recording is the only permission it asks for.
 | **Scroll capture** | Manually scroll a region; frames are aligned by row fingerprints and stitched, both downwards and upwards. |
 | **GIF recording** | Frame a region, record up to 20 s at 12 fps, stop with the same shortcut. A red frame shows exactly what is being recorded. |
 | **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere, double-click to open. The clothesline idea comes from Tendedero. |
-| **Pins** | Any shot can float above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. |
+| **Pins** | Any shot floats above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. Clipboard text pins too, as a selectable card. |
 | **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
 | **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon, and editable shortcuts. |
 
@@ -48,8 +48,7 @@ analytics, no auto-updater. Screen Recording is the only permission it asks for.
 | `⌃⌥X` | Snip and save — release the mouse and it is already copied and written to disk |
 | `⌃⌥A` | Snip and annotate — the tool bar appears under the selection |
 | `⌃⌥G` | Record a GIF — frame a region, press again to stop |
-| `⌃⌥P` | Pin the previous screenshot (press repeatedly to walk back through history) |
-| `⌃⌥V` | Pin the image on the clipboard |
+| `⌃⌥V` | Pin the clipboard: an image as a picture, text as a card, and the newest shot on disk when the clipboard is empty |
 | `⌃⌥H` | Screenshot history |
 | `⌃⌥S` | Show / hide the clothesline |
 

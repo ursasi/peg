@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setUpStatusItem()
         setUpHotKeys()
         Shelf.shared.start()
+        _ = PinController.shared
+        PinController.shared.scrollMonitorInstalled()
         DebugLog.log("launched, debug=\(DebugLog.enabled)")
         setUpDebugChannel()
 
@@ -59,11 +61,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .record: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .record) } },
             .shelf: { MainActor.assumeIsolated { Shelf.shared.toggle() } },
             .history: { MainActor.assumeIsolated { HistoryWindow.shared.show() } },
-            .pinOlder: {
-                MainActor.assumeIsolated {
-                    if !PinController.shared.pinNextOlder() { NSSound.beep() }
-                }
-            },
             .pastePin: {
                 MainActor.assumeIsolated {
                     if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
@@ -133,8 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "closepins":
             PinController.shared.closeAll()
         case "pin":
-            if !PinController.shared.pinNextOlder() {
-                DebugLog.log("pin: nothing in history")
+            if !PinController.shared.pinFromPasteboard() {
+                DebugLog.log("pin: clipboard empty and no history")
             }
         case "cancel": SnipSession.shared.cancel()
         case "stoprecord": Recorder.shared.stop()
@@ -246,10 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let history = NSMenuItem(title: "截图历史", action: #selector(openHistory), keyEquivalent: "")
         menu.addItem(history)
 
-        let pinOlder = NSMenuItem(title: "贴上一张截图", action: #selector(pinOlder), keyEquivalent: "")
-        menu.addItem(pinOlder)
-
-        let pastePin = NSMenuItem(title: "贴剪贴板图片", action: #selector(pastePin), keyEquivalent: "")
+        let pastePin = NSMenuItem(title: "贴到屏幕", action: #selector(pastePin), keyEquivalent: "")
         menu.addItem(pastePin)
 
         let dock = NSMenuItem(title: "在 Dock 中显示", action: #selector(toggleDock), keyEquivalent: "")
@@ -291,7 +285,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                (record, .record),
                                (shelf, .shelf),
                                (history, .history),
-                               (pinOlder, .pinOlder),
                                (pastePin, .pastePin)] {
             let shortcut = ShortcutStore.shortcut(for: action)
             item.keyEquivalent = Shortcut.keyName(shortcut.keyCode).lowercased()
@@ -326,10 +319,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for item in sender.menu?.items ?? [] {
             item.state = item.tag == sender.tag ? .on : .off
         }
-    }
-
-    @objc private func pinOlder() {
-        if !PinController.shared.pinNextOlder() { NSSound.beep() }
     }
 
     @objc private func pastePin() {

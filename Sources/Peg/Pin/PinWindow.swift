@@ -8,9 +8,13 @@ import ImageIO
 final class PinController {
     static let shared = PinController()
     private var pins: [PinWindow] = []
+    private var textPins: [PinTextWindow] = []
     private var cascade = 0
     private var historyCursor = 0
     private var lastHistoryPin = Date.distantPast
+    private var scrollMonitor: Any?
+    private var lastZoom: ((CGFloat) -> Void)?
+    private var lastZoomTime = Date.distantPast
 
     func pin(_ image: CGImage, at rect: CGRect) {
         let window = PinWindow(image: image, frame: rect)
@@ -22,19 +26,25 @@ final class PinController {
         window.orderFrontRegardless()
     }
 
-    /// Pin whatever image is on the clipboard, centred on the active screen.
+    /// Everything Peg copies is on the clipboard, so one command covers it:
+    /// an image pins as a picture, text pins as a text card, and when the
+    /// clipboard holds neither we walk back through the shots on disk.
     @discardableResult
     func pinFromPasteboard() -> Bool {
-        guard let image = PinController.imageFromPasteboard() else { return false }
-        pinCentered(image, on: NSScreen.main)
-        return true
+        if let image = PinController.imageFromPasteboard() {
+            pinCentered(image, on: NSScreen.main)
+            return true
+        }
+        if let text = PinController.textFromPasteboard() {
+            pinText(text)
+            return true
+        }
+        return pinLastShot()
     }
 
-    /// Pin the next older shot on disk. Every press pins one more picture, so
-    /// holding a hotkey walks back through history instead of stacking the same
-    /// screenshot over and over.
+    /// Pin the newest shot on disk that is not already floating here.
     @discardableResult
-    func pinNextOlder() -> Bool {
+    func pinLastShot() -> Bool {
         let files = HistoryStore.files()
         guard !files.isEmpty else { return false }
         if Date().timeIntervalSince(lastHistoryPin) > 12 { historyCursor = 0 }
@@ -49,6 +59,32 @@ final class PinController {
     func resetHistoryCursor() {
         historyCursor = 0
         lastHistoryPin = .distantPast
+    }
+
+    func pinText(_ text: String) {
+        let screen = NSScreen.main
+        let visible = (screen?.visibleFrame) ?? CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let window = PinTextWindow(text: text)
+        let size = window.documentSize
+        let step = CGFloat(cascade % 6) * 22
+        cascade += 1
+        let origin = CGPoint(x: visible.midX - size.width / 2 + step,
+                             y: visible.midY - size.height / 2 - step)
+        window.setFrameOrigin(origin)
+        window.onClose = { [weak self, weak window] in
+            guard let self, let window else { return }
+            self.pins.removeAll { $0 === window }
+            self.textPins.removeAll { $0 === window }
+        }
+        textPins.append(window)
+        window.orderFrontRegardless()
+    }
+
+    static func textFromPasteboard() -> String? {
+        let pasteboard = NSPasteboard.general
+        guard let text = pasteboard.string(forType: .string) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : text
     }
 
     /// Pin a file (used by the clothesline), at natural size, centred.
@@ -98,8 +134,39 @@ final class PinController {
 
     func closeAll() {
         pins.forEach { $0.close() }
+        textPins.forEach { $0.close() }
         pins.removeAll()
+        textPins.removeAll()
         cascade = 0
+    }
+
+    /// Scrolling keeps zooming for a moment after the pointer slides off the
+    /// picture, which is what a trackpad gesture feels like it should do: the
+    /// window grows under the cursor and the cursor ends up outside it.
+    func scrollMonitorInstalled() {
+        guard scrollMonitor == nil else { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self else { return event }
+            let point = NSEvent.mouseLocation
+            // Let the window itself handle the event when the pointer is on it.
+            guard !self.pointerInsidePin(point) else { return event }
+            guard Date().timeIntervalSince(self.lastZoomTime) < 0.7 else { return event }
+            self.lastZoomTime = Date()
+            self.lastZoom?(event.scrollingDeltaY)
+            return nil
+        }
+    }
+
+    private func pointerInsidePin(_ point: CGPoint) -> Bool {
+        if pins.contains(where: { $0.frame.contains(point) }) { return true }
+        return textPins.contains(where: { $0.frame.contains(point) })
+    }
+
+    /// Called by every pin after a scroll, so the monitor knows who to keep
+    /// feeding when the pointer leaves.
+    func noteZoom(_ target: @escaping (CGFloat) -> Void) {
+        lastZoom = target
+        lastZoomTime = Date()
     }
 }
 
@@ -130,7 +197,11 @@ final class PinWindow: NSPanel {
 
         let view = PinImageView(image: image)
         view.wantsLayer = true
-        view.onZoom = { [weak self] delta in self?.zoom(by: delta) }
+        view.onZoom = { [weak self] delta in
+            guard let self else { return }
+            PinController.shared.noteZoom { [weak self] in self?.zoom(by: $0) }
+            self.zoom(by: delta)
+        }
         view.onCopy = { Clip.copy(image) }
         view.onCloseWindow = { [weak self] in self?.close() }
         view.onSave = {

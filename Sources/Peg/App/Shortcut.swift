@@ -9,7 +9,6 @@ enum ShortcutAction: String, CaseIterable {
     case record
     case shelf
     case history
-    case pinOlder
     case pastePin
 
     var title: String {
@@ -19,8 +18,8 @@ enum ShortcutAction: String, CaseIterable {
         case .record: return "录制 GIF"
         case .shelf: return "晾图绳"
         case .history: return "截图历史"
-        case .pinOlder: return "贴上一张截图"
-        case .pastePin: return "贴剪贴板图片"
+        case .pastePin: return "贴到屏幕"
+
         }
     }
 
@@ -32,7 +31,6 @@ enum ShortcutAction: String, CaseIterable {
         case .record: return Shortcut(keyCode: UInt32(kVK_ANSI_G), modifiers: Shortcut.defaultModifiers)
         case .shelf: return Shortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: Shortcut.defaultModifiers)
         case .history: return Shortcut(keyCode: UInt32(kVK_ANSI_H), modifiers: Shortcut.defaultModifiers)
-        case .pinOlder: return Shortcut(keyCode: UInt32(kVK_ANSI_P), modifiers: Shortcut.defaultModifiers)
         case .pastePin: return Shortcut(keyCode: UInt32(kVK_ANSI_V), modifiers: Shortcut.defaultModifiers)
         }
     }
