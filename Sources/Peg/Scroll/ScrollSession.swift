@@ -217,9 +217,11 @@ final class ScrollSession {
         }
         switch update {
         case .seeded(let rows):
-            hud?.setStatus("已拼接 \(rows) 像素 · 在框内向下滚动")
-        case .appended(_, let total):
-            hud?.setStatus("已拼接 \(total) 像素 · \(stitcher.frames) 屏")
+            hud?.setStatus("已拼接 \(rows) 像素 · 在框内滚动（上下都行）")
+        case .appended(let rows, let total):
+            hud?.setStatus(rows < 0
+                ? "已向上补 \(total) 像素 · \(stitcher.frames) 屏"
+                : "已拼接 \(total) 像素 · \(stitcher.frames) 屏")
         case .failed:
             if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1", let before = debugPrevious {
                 NSLog("Peg scroll fail: %@", ScrollMatcher.diagnose(before, frame))

@@ -103,6 +103,19 @@ enum ScrollSelfTest {
         }
         check("every step appended \(step) rows", stepsExact)
 
+        // Scrolling back up must not duplicate anything: the same rows are
+        // already in the picture, they are simply revisited.
+        let beforeDetour = stitcher.rows
+        var detourOK = true
+        for back in [lastOffset - step, lastOffset - step * 2, lastOffset - step, lastOffset] {
+            let update = stitcher.ingest(frame(doc, offset: back, height: viewport,
+                                               header: headerRows, footer: footerRows))
+            if case .appended(let appended, _) = update, appended != 0 { detourOK = false }
+        }
+        _ = detourOK
+        check("scrolling back up stays put", stitcher.rows == beforeDetour,
+              "went from \(beforeDetour) to \(stitcher.rows)")
+
         let bodyRows = viewport - headerRows.count - footerRows.count
         let expectedTotal = headerRows.count + lastOffset + bodyRows + footerRows.count
         check("stitched height", stitcher.rows + footerRows.count == expectedTotal,

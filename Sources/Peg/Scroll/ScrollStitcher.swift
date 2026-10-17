@@ -3,13 +3,16 @@ import Foundation
 
 /// Accumulates frames into one tall image.
 ///
-/// The first frame is the seed. Every later frame contributes only the rows
-/// that scrolled into view at the bottom, with the fixed footer taken out and
-/// added back exactly once at the end.
+/// The first frame is the seed. A frame that moves the view downwards
+/// contributes the rows that scrolled in at the bottom; a frame that moves it
+/// upwards contributes the rows that scrolled in at the top. Revisiting rows
+/// that are already in the picture contributes nothing, which is what makes
+/// "scroll up a bit, then down again" safe.
 struct ScrollStitcher {
     enum Update: Equatable {
         case seeded(rows: Int)
         case unchanged
+        /// `rows` is signed: positive when the picture grew at the bottom.
         case appended(rows: Int, total: Int)
         /// Too fast, ambiguous, or the content did not line up.
         case failed
@@ -25,6 +28,8 @@ struct ScrollStitcher {
     private var last: ScrollFrame?
     private var lastFooter: [UInt8] = []
     private var stickyBottom = -1
+    /// How many of the picture's rows sit above the top of the current view.
+    private var viewOffset = 0
     private var reachedLimit = false
     private let maxRows: Int
 
@@ -50,7 +55,7 @@ struct ScrollStitcher {
         case .unchanged:
             last = frame
 
-        case .advance(let advance, _, let bottom):
+        case .advance(let shift, let top, let bottom):
             guard !reachedLimit else { return .ignored }
             if stickyBottom < 0 {
                 // The seed still contains the footer. Now that we know where it
@@ -60,31 +65,69 @@ struct ScrollStitcher {
                     bytes.removeLast(bottom * width * 4)
                     rows -= bottom
                 }
-                lastFooter = footerRows(of: frame, count: bottom)
             }
-            let start = frame.height - bottom - advance
-            let end = frame.height - bottom
-            guard start >= 0, end <= frame.height, advance > 0 else {
-                last = frame
-                return .failed
-            }
-            bytes.append(contentsOf: frame.bytes[(start * width * 4)..<(end * width * 4)])
-            rows += advance
-            frames += 1
             last = frame
-            if stickyBottom > 0 {
-                lastFooter = footerRows(of: frame, count: stickyBottom)
+            if shift > 0 {
+                return scrollDown(frame, by: shift, bottom: bottom)
+            } else if shift < 0 {
+                return scrollUp(frame, by: -shift, top: top, bottom: bottom)
+            } else {
+                return .unchanged
             }
-            if rows >= maxRows {
-                reachedLimit = true
-                return .ignored
-            }
-            return .appended(rows: advance, total: rows)
 
         case .failed:
             return .failed
         }
         return .unchanged
+    }
+
+    /// The view moved down: the picture only grows if we went past its bottom.
+    private mutating func scrollDown(_ frame: ScrollFrame, by shift: Int, bottom: Int) -> Update {
+        viewOffset += shift
+        let visible = frame.height - max(0, bottom)
+        let overflow = viewOffset + visible - rows
+        guard overflow > 0 else { return .unchanged }
+
+        let take = min(overflow, visible)
+        let start = visible - take
+        guard start >= 0, take > 0, rows + take <= maxRows else {
+            reachedLimit = rows + take > maxRows
+            return .ignored
+        }
+        let rowBytes = width * 4
+        bytes.append(contentsOf: frame.bytes[(start * rowBytes)..<((start + take) * rowBytes)])
+        rows += take
+        viewOffset = max(0, rows - visible)
+        frames += 1
+        if stickyBottom > 0 {
+            lastFooter = footerRows(of: frame, count: stickyBottom)
+        }
+        if rows >= maxRows { reachedLimit = true }
+        return .appended(rows: take, total: rows)
+    }
+
+    /// The view moved up: rows that were already captured are skipped, rows
+    /// above the top of the picture are added there.
+    private mutating func scrollUp(_ frame: ScrollFrame, by shift: Int,
+                                   top: Int, bottom: Int) -> Update {
+        if viewOffset >= shift {
+            viewOffset -= shift
+            return .unchanged
+        }
+        let need = shift - viewOffset
+        let available = frame.height - top - max(0, bottom)
+        let take = min(need, available)
+        guard take > 0, rows + take <= maxRows else {
+            reachedLimit = take > 0 && rows + take > maxRows
+            return .ignored
+        }
+        let rowBytes = width * 4
+        bytes.insert(contentsOf: frame.bytes[(top * rowBytes)..<((top + take) * rowBytes)], at: 0)
+        rows += take
+        viewOffset = 0
+        frames += 1
+        if rows >= maxRows { reachedLimit = true }
+        return .appended(rows: -take, total: rows)
     }
 
     func image() -> CGImage? {

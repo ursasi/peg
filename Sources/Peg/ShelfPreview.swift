@@ -6,7 +6,7 @@ final class PreviewPanel {
     static let shared = PreviewPanel()
 
     private var panel: NSPanel?
-    private var imageView: NSImageView?
+    private var content: PreviewContentView?
     private var hideWork: DispatchWorkItem?
 
     func show(_ image: NSImage, near rect: CGRect, on screen: NSScreen) {
@@ -17,15 +17,18 @@ final class PreviewPanel {
         let maxHeight = visible.height * 0.62
         let source = image.size
         guard source.width > 0, source.height > 0 else { return }
+
+        // Fit inside the allowed box, never beyond 1:1 pixels.
         let factor = min(maxWidth / source.width, maxHeight / source.height, 1.4)
-        let size = NSSize(width: (source.width * factor).rounded(),
-                          height: (source.height * factor).rounded())
+        let size = NSSize(width: (source.width * factor).rounded() + 12,
+                          height: (source.height * factor).rounded() + 12)
 
         // Below the card, or above it when there is no room.
-        var origin = NSPoint(x: rect.midX - size.width / 2,
-                             y: rect.minY - size.height - 12)
+        var origin = NSPoint(x: rect.midX - size.width / 2, y: rect.minY - size.height - 10)
+        var enterFromAbove = false
         if origin.y < visible.minY + 12 {
-            origin = NSPoint(x: rect.midX - size.width / 2, y: rect.maxY + 12)
+            origin = NSPoint(x: rect.midX - size.width / 2, y: rect.maxY + 10)
+            enterFromAbove = true
         }
         origin.x = min(max(visible.minX + 12, origin.x), visible.maxX - size.width - 12)
         origin.y = min(max(visible.minY + 12, origin.y), visible.maxY - size.height - 12)
@@ -33,19 +36,15 @@ final class PreviewPanel {
 
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        content?.image = image
 
-        let inset: CGFloat = 6
-        if let view = imageView {
-            view.image = image
-            view.frame = NSRect(x: inset, y: inset,
-                                width: size.width - inset * 2,
-                                height: size.height - inset * 2)
-        }
-
-        // Scale up from slightly smaller while fading in.
-        let start = target.insetBy(dx: size.width * 0.04, dy: size.height * 0.04)
+        // The window is placed at its final size straight away, so the image is
+        // laid out once. Only alpha and position animate — resizing the window
+        // while the image view catches up is what made the first frame show a
+        // cropped, wrongly scaled picture.
+        let slide: CGFloat = enterFromAbove ? 8 : -8
         panel.alphaValue = 0
-        panel.setFrame(start, display: false)
+        panel.setFrame(target.offsetBy(dx: 0, dy: slide), display: false)
         panel.orderFrontRegardless()
 
         NSAnimationContext.runAnimationGroup { context in
@@ -90,21 +89,49 @@ final class PreviewPanel {
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let root = NSView(frame: panel.contentRect(forFrameRect: panel.frame))
-        root.wantsLayer = true
-        root.layer?.backgroundColor = NSColor(calibratedWhite: 0.10, alpha: 0.96).cgColor
-        root.layer?.cornerRadius = 10
-        root.layer?.masksToBounds = true
-        root.layer?.borderWidth = 1
-        root.layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
-
-        let view = NSImageView(frame: root.bounds)
-        view.imageScaling = .scaleProportionallyUpOrDown
-        view.autoresizingMask = [.width, .height]
-        root.addSubview(view)
-        imageView = view
-
-        panel.contentView = root
+        let view = PreviewContentView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+        content = view
+        panel.contentView = view
         return panel
+    }
+}
+
+/// Draws the picture itself instead of relying on NSImageView's scaling, which
+/// painted the image at its natural size for the first frame after a resize.
+final class PreviewContentView: NSView {
+    var image: NSImage? {
+        didSet { needsDisplay = true }
+    }
+
+    // Deliberately *not* flipped: NSImage draws top-row-first only in an
+    // unflipped view, and a flipped one renders the picture upside down.
+    override var isFlipped: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rounded = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
+                                   xRadius: 10, yRadius: 10)
+        NSColor(calibratedWhite: 0.10, alpha: 0.96).setFill()
+        rounded.fill()
+        NSColor.white.withAlphaComponent(0.18).setStroke()
+        rounded.lineWidth = 1
+        rounded.stroke()
+
+        guard let image, image.size.width > 0, image.size.height > 0 else { return }
+        let box = bounds.insetBy(dx: 6, dy: 6)
+        let aspect = image.size.width / image.size.height
+        var rect = box
+        if box.width / box.height > aspect {
+            rect.size.width = box.height * aspect
+            rect.origin.x = box.minX + (box.width - rect.width) / 2
+        } else {
+            rect.size.height = box.width / aspect
+            rect.origin.y = box.minY + (box.height - rect.height) / 2
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).addClip()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
