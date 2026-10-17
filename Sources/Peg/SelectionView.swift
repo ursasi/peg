@@ -55,9 +55,11 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     }
 
     private func takeFocus() {
-        guard let window else { return }
+        guard let window, textField == nil else { return }
         if !window.isKeyWindow { window.makeKey() }
-        if window.firstResponder !== self { window.makeFirstResponder(self) }
+        if window.firstResponder !== self {
+            window.makeFirstResponder(self)
+        }
     }
 
     // MARK: - Events
@@ -401,7 +403,30 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         addSubview(field)
         textAnchor = point
         textField = field
-        window?.makeFirstResponder(field)
+
+        // The overlay window is only orderFrontRegardless'd, so the very first
+        // click can land on a window that is not key yet: entering the field
+        // then silently fails and the user has to click again.
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        let focused = window?.makeFirstResponder(field) ?? false
+        DebugLog.log("beginText focused=\(focused) responder=\(String(describing: window?.firstResponder)) key=\(window?.isKeyWindow ?? false)")
+        guard !focused else { return }
+        // Adding a field and focusing it in the same turn is unreliable; retry
+        // once the run loop has laid it out.
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let field = self.textField else { return }
+                let ok = self.window?.makeFirstResponder(field) ?? false
+                DebugLog.log("beginText retry focused=\(ok) responder=\(String(describing: self.window?.firstResponder))")
+            }
+        }
+    }
+
+    /// Called by the session right before it crops: a half-typed caption must
+    /// not be lost when the user hits ⏎ or clicks 完成.
+    func commitPendingText() {
+        endText(commit: true)
     }
 
     @objc private func commitText() {
@@ -410,6 +435,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
 
     private func endText(commit: Bool) {
         guard let field = textField else { return }
+        DebugLog.log("endText commit=\(commit)")
         let value = field.stringValue
         textField = nil
         field.removeFromSuperview()
@@ -475,6 +501,8 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         // Whatever the button did, this click is spent: the release must not be
         // read as "resize the selection".
         consumedClick = true
+        // Switching tools (or undoing) must not throw away a caption being typed.
+        commitPendingText()
         switch action {
         case .tool(let tool):
             DebugLog.log("perform tool=\(tool)")

@@ -125,6 +125,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "shelf": Shelf.shared.toggle()
         case "settings": SettingsWindow.shared.show()
         case "cancel": SnipSession.shared.cancel()
+        case _ where debugCommand.hasPrefix("key:"):
+            if let code = UInt16(debugCommand.dropFirst("key:".count)) { SnipSession.shared.debugKey(code) }
+        case _ where debugCommand.hasPrefix("type:"):
+            let text = String(debugCommand.dropFirst("type:".count))
+            SnipSession.shared.debugType(text)
         case _ where debugCommand.hasPrefix("click:"), _ where debugCommand.hasPrefix("drag:"), _ where debugCommand.hasPrefix("move:"):
             let parts = debugCommand.split(separator: ":", maxSplits: 1)
             guard parts.count == 2 else { return }

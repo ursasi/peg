@@ -406,6 +406,31 @@ final class SnipSession {
         }
     }
 
+    func debugKey(_ code: UInt16) {
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return }
+        let chars: String = code == 36 ? "\r" : " "
+        guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
+                                           modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                           windowNumber: window.windowNumber, context: nil,
+                                           characters: chars, charactersIgnoringModifiers: chars,
+                                           isARepeat: false, keyCode: code) else { return }
+        DebugLog.log("debugKey \(code) responder=\(String(describing: window.firstResponder))")
+        window.sendEvent(event)
+    }
+
+    func debugType(_ text: String) {
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return }
+        DebugLog.log("debugType responder=\(String(describing: window.firstResponder))")
+        if let editor = window.firstResponder as? NSTextView {
+            editor.insertText(text, replacementRange: editor.selectedRange())
+        } else {
+            DispatchQueue.main.async {
+                let current = String(describing: window.firstResponder)
+                DebugLog.log("debugType: no text editor, responder=\(current)")
+            }
+        }
+    }
+
     private func redraw() {
         for window in windows {
             window.contentView?.needsDisplay = true
@@ -454,6 +479,10 @@ final class SnipSession {
     // MARK: - Commit
 
     func commit(_ finish: Finish) {
+        // A text box that is still open is part of the picture too.
+        for window in windows {
+            (window.contentView as? SelectionView)?.commitPendingText()
+        }
         guard let cropped = cropSelection() else { return }
         DebugLog.log("commit \(finish) rect=\(cropped.onScreen) local=\(cropped.localRect) shapes=\(shapes.count)")
         let onScreen = cropped.onScreen
