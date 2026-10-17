@@ -162,6 +162,7 @@ final class Shelf {
             }
         }
 
+        content?.startWave()
         if let seconds { scheduleHide(after: seconds) }
     }
 
@@ -169,6 +170,7 @@ final class Shelf {
         hideWork?.cancel()
         hideWork = nil
         PreviewPanel.shared.hide()
+        content?.stopWave()
         guard let panel, isShown else { return }
         isShown = false
 

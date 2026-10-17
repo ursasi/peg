@@ -198,21 +198,16 @@ final class PinImageView: NSView {
         let radius = max(4, min(12, content.width * 0.02))
         let shape = NSBezierPath(roundedRect: content, xRadius: radius, yRadius: radius)
 
-        // Shadow first, then the picture on top.
+        // The shadow comes from the picture's own alpha, so the rounded corners
+        // stay transparent instead of sitting on a white plate.
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
         shadow.shadowBlurRadius = 18
         shadow.shadowOffset = NSSize(width: 0, height: -3)
         shadow.set()
-        NSColor.white.setFill()
-        shape.fill()
-        NSShadow().set()
-
-        NSGraphicsContext.saveGraphicsState()
-        shape.addClip()
         NSGraphicsContext.current?.imageInterpolation = .high
         NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)).draw(in: content)
-        NSGraphicsContext.restoreGraphicsState()
+        NSShadow().set()
 
         // Two hairlines, light outside and dark inside, so the edge shows up on
         // both a white page and a dark wallpaper.

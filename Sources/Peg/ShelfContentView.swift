@@ -55,16 +55,26 @@ final class ShelfContentView: NSView {
             + ShelfMetrics.inset * 2 + ShelfMetrics.stampHeight + 10
     }
 
+    /// A slow travelling ripple on top of the sag. Zero at both ends so the
+    /// line stays pinned off-screen, and it never swings more than a couple of
+    /// points, so the sheets still look hung rather than floating.
+    static var wavePhase: CGFloat = 0
+    static var waveAmplitude: CGFloat { 4 * ShelfMetrics.scale }
+    static var waveLength: CGFloat { 240 * ShelfMetrics.scale }
+
     static func ropeY(x: CGFloat, width: CGFloat) -> CGFloat {
         guard width > 0 else { return ropeTop }
         let f = min(1, max(0, x / width))
-        return ropeTop + 4 * ropeSag(width) * f * (1 - f)
+        let sag = 4 * ropeSag(width) * f * (1 - f)
+        let pinned = min(1, min(f, 1 - f) * 8)
+        let phase = x / waveLength * 2 * .pi + wavePhase
+        return ropeTop + sag + sin(phase) * waveAmplitude * pinned
     }
 
     static func ropeSlope(x: CGFloat, width: CGFloat) -> CGFloat {
         guard width > 0 else { return 0 }
-        let f = min(1, max(0, x / width))
-        return 4 * ropeSag(width) * (1 - 2 * f) / width
+        let step: CGFloat = 1
+        return (ropeY(x: x + step, width: width) - ropeY(x: x - step, width: width)) / (2 * step)
     }
 
     private let header = NSTextField(labelWithString: "")
@@ -72,6 +82,8 @@ final class ShelfContentView: NSView {
     private let emptyLabel = NSTextField(labelWithString: "")
     private let scroll = HorizontalScrollView()
     private let strip = ThumbStrip()
+    private var ropeView: RopeView?
+    private var waveTimer: Timer?
 
     var onCopy: ((ShotItem) -> Void)?
     var onOpen: ((ShotItem) -> Void)?
@@ -119,6 +131,7 @@ final class ShelfContentView: NSView {
         let rope = RopeView(frame: bounds)
         rope.autoresizingMask = [.width, .height]
         addSubview(rope, positioned: .below, relativeTo: scroll)
+        ropeView = rope
 
         strip.host = self
         strip.onCopy = { [weak self] item in self?.onCopy?(item) }
@@ -141,6 +154,26 @@ final class ShelfContentView: NSView {
         needsLayout = true
         needsDisplay = true
         DispatchQueue.main.async { [weak self] in self?.scrollToNewest() }
+    }
+
+    /// The rope only ripples while the line is on screen.
+    func startWave() {
+        guard waveTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                ShelfContentView.wavePhase += 0.06
+                self.ropeView?.needsDisplay = true
+                self.strip.needsLayout = true
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        waveTimer = timer
+    }
+
+    func stopWave() {
+        waveTimer?.invalidate()
+        waveTimer = nil
     }
 
     private func scrollToNewest() {
@@ -636,21 +669,24 @@ final class ThumbView: NSView, NSDraggingSource {
     /// Time the shot was taken, in type small enough to read as a caption and
     /// not as a label competing with the picture.
     private func drawStamp(below card: CGRect) {
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.75)
-        shadow.shadowBlurRadius = 3
-        shadow.shadowOffset = NSSize(width: 0, height: 1)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .medium),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.62),
-            .shadow: shadow
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .semibold),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.92)
         ]
         // Today's shots only need a time; older ones need the date too.
         let formatter = Calendar.current.isDateInToday(item.created) ? Self.timeOnly : Self.withDate
         let text = formatter.string(from: item.created) as NSString
         let size = text.size(withAttributes: attributes)
-        let y = card.maxY - ShelfMetrics.stampHeight / 2 - size.height / 2
-        text.draw(at: NSPoint(x: card.midX - size.width / 2, y: y), withAttributes: attributes)
+        let centreY = card.maxY - ShelfMetrics.stampHeight / 2
+        // A small plate behind the type: a wallpaper can be any colour, and a
+        // 9pt line on its own disappears against a light one.
+        let plate = CGRect(x: card.midX - size.width / 2 - 5,
+                           y: centreY - size.height / 2 - 1.5,
+                           width: size.width + 10,
+                           height: size.height + 3)
+        NSColor.black.withAlphaComponent(0.42).setFill()
+        NSBezierPath(roundedRect: plate, xRadius: plate.height / 2, yRadius: plate.height / 2).fill()
+        text.draw(at: NSPoint(x: plate.minX + 5, y: plate.minY + 1.5), withAttributes: attributes)
     }
 
     private static let timeOnly: DateFormatter = {

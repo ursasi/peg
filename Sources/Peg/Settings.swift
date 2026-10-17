@@ -193,7 +193,7 @@ final class SettingsWindow: NSWindowController {
         roundCheck.action = #selector(roundChanged)
 
         let note = NSTextField(wrappingLabelWithString:
-            "截图　⌃⌥X 直接复制并保存　⌃⌥A 带标注工具\n"
+            "截图　⌃⌥X 直接复制并保存　⌃⌥A 带标注工具　⌃⌥G 录 GIF\n"
             + "标注时　1–8 选工具　⏎ 完成　P 贴到屏幕　L 长截图　Esc 取消\n"
             + "其它　⌃⌥P 贴上一张　⌃⌥V 贴剪贴板　⌃⌥H 历史　⌃⌥S 晾图绳")
         note.font = .systemFont(ofSize: 11)

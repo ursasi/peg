@@ -18,6 +18,7 @@ final class SnipSession {
     enum Mode {
         case direct   // ⌃⌥X: release the mouse, it is already copied and saved
         case markup   // ⌃⌥A: tools appear, ⏎ when done
+        case record   // ⌃⌥G: the region becomes a GIF recorder
     }
 
     private(set) var isActive = false
@@ -62,6 +63,10 @@ final class SnipSession {
     /// The snip hotkey does double duty: while a scroll capture is running it
     /// finishes that instead of starting a new snip.
     func hotKeyPressed(mode: Mode = .markup) {
+        if Recorder.shared.isRecording {
+            Recorder.shared.stop()
+            return
+        }
         if ScrollSession.shared.isActive {
             ScrollSession.shared.finish()
             return
@@ -358,6 +363,13 @@ final class SnipSession {
         }
         current = point
         redraw()
+        if mode == .record, let rect = selection(on: screen), rect.width >= 8, rect.height >= 8 {
+            dismiss()
+            Task { @MainActor in
+                await Recorder.shared.begin(region: rect, on: screen)
+            }
+            return
+        }
         if mode == .direct, let rect = selection(on: screen), rect.width >= 8, rect.height >= 8 {
             commit(.copyAndSave)
         }

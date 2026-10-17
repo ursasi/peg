@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var snipHotKey: HotKey?
     private var markupHotKey: HotKey?
+    private var recordHotKey: HotKey?
     private var debugTimer: Timer?
     private var shelfHotKey: HotKey?
     private var pastePinHotKey: HotKey?
@@ -69,6 +70,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("Peg: ⌃⌥A is taken by another app")
         }
 
+        recordHotKey = HotKey(.record) {
+            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .record) }
+        }
+        if recordHotKey == nil {
+            NSLog("Peg: ⌃⌥G is taken by another app")
+        }
+
         shelfHotKey = HotKey(.shelf) {
             MainActor.assumeIsolated { Shelf.shared.toggle() }
         }
@@ -121,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch debugCommand {
         case "snip": SnipSession.shared.hotKeyPressed(mode: .direct)
         case "snipmarkup": SnipSession.shared.hotKeyPressed(mode: .markup)
+        case "record": SnipSession.shared.hotKeyPressed(mode: .record)
         case "history": HistoryWindow.shared.show()
         case "shelf": Shelf.shared.toggle()
         case "settings": SettingsWindow.shared.show()
@@ -131,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DebugLog.log("pin: nothing in history")
             }
         case "cancel": SnipSession.shared.cancel()
+        case "stoprecord": Recorder.shared.stop()
         case _ where debugCommand.hasPrefix("key:"):
             if let code = UInt16(debugCommand.dropFirst("key:".count)) { SnipSession.shared.debugKey(code) }
         case _ where debugCommand.hasPrefix("type:"):
@@ -188,6 +198,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         snipMarkup.target = self
         menu.addItem(snipMarkup)
 
+        let record = NSMenuItem(title: "录制 GIF", action: #selector(recordMovie), keyEquivalent: "")
+        record.target = self
+        menu.addItem(record)
+
         let shelf = NSMenuItem(title: "晾图绳", action: #selector(toggleShelf), keyEquivalent: "")
         shelf.target = self
         menu.addItem(shelf)
@@ -243,6 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Show the shortcuts in the menu without registering them twice.
         snip.attributedTitle = NSAttributedString(string: "截图            ⌃⌥X")
         snipMarkup.attributedTitle = NSAttributedString(string: "截图并标注      ⌃⌥A")
+        record.attributedTitle = NSAttributedString(string: "录制 GIF        ⌃⌥G")
         shelf.attributedTitle = NSAttributedString(string: "晾图绳      ⌃⌥S")
 
         item.menu = menu
@@ -255,6 +270,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func snipMarkup() {
         SnipSession.shared.hotKeyPressed(mode: .markup)
+    }
+
+    @objc private func recordMovie() {
+        SnipSession.shared.hotKeyPressed(mode: .record)
     }
 
     @objc private func toggleShelf() {
