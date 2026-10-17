@@ -70,13 +70,13 @@ struct AnnotationShape {
                          y: min(start.y, end.y),
                          width: abs(start.x - end.x),
                          height: abs(start.y - end.y))
-        // Freehand strokes carry their extent in `points`, not in start/end.
+        // Freehand strokes carry their extent in `points`; start/end are unused
+        // there, so unioning them would drag the box back to (0, 0).
         guard !points.isEmpty else { return box }
         let xs = points.map(\.x), ys = points.map(\.y)
-        let pen = CGRect(x: xs.min() ?? 0, y: ys.min() ?? 0,
-                         width: (xs.max() ?? 0) - (xs.min() ?? 0),
-                         height: (ys.max() ?? 0) - (ys.min() ?? 0))
-        return box.union(pen)
+        guard let minX = xs.min(), let maxX = xs.max(),
+              let minY = ys.min(), let maxY = ys.max() else { return box }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
     /// Too small to keep (a stray click).
@@ -85,7 +85,8 @@ struct AnnotationShape {
         case .text:
             return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .pen, .marker:
-            return points.count < 2
+            // A single tap is a deliberate dot, not an accident.
+            return points.isEmpty
         default:
             let bounds = rect
             return bounds.width < 4 || bounds.height < 4

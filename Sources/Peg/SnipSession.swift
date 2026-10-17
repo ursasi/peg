@@ -274,6 +274,10 @@ final class SnipSession {
     func updateShape(to point: CGPoint) {
         guard var shape = draftShape else { return }
         if shape.tool == .pen || shape.tool == .marker {
+            // Drop samples that are closer than a point: they only cost redraws.
+            if let last = shape.points.last, hypot(point.x - last.x, point.y - last.y) < 1.2 {
+                return
+            }
             shape.points.append(point)
         } else {
             shape.end = point
@@ -451,11 +455,13 @@ final class SnipSession {
 
     func commit(_ finish: Finish) {
         guard let cropped = cropSelection() else { return }
-        DebugLog.log("commit \(finish) rect=\(cropped.onScreen) shapes=\(shapes.count)")
+        DebugLog.log("commit \(finish) rect=\(cropped.onScreen) local=\(cropped.localRect) shapes=\(shapes.count)")
         let onScreen = cropped.onScreen
+        // Marks live in top-left points, so the offset must be the top-left
+        // rectangle, not the AppKit (bottom-left) one.
         let flattened = flatten(cropped.image,
-                                selection: onScreen,
-                                scale: CGFloat(cropped.image.width) / max(1, onScreen.width))
+                                selection: cropped.localRect,
+                                scale: CGFloat(cropped.image.width) / max(1, cropped.localRect.width))
         dismiss()
 
         switch finish {
@@ -471,7 +477,7 @@ final class SnipSession {
         }
     }
 
-    private func cropSelection() -> (image: CGImage, screen: NSScreen, onScreen: CGRect)? {
+    private func cropSelection() -> (image: CGImage, screen: NSScreen, onScreen: CGRect, localRect: CGRect)? {
         guard let screen = activeScreen,
               let rect = selection(on: screen),
               rect.width >= 3, rect.height >= 3,
@@ -491,7 +497,7 @@ final class SnipSession {
               let cropped = shot.image.cropping(to: pixelRect)
         else { return nil }
 
-        return (cropped, screen, Displays.appKitRect(fromLocalTopLeft: rect, on: screen))
+        return (cropped, screen, Displays.appKitRect(fromLocalTopLeft: rect, on: screen), rect)
     }
 
     /// Hands the current selection to the scrolling capture.

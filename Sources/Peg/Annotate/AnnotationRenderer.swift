@@ -79,14 +79,43 @@ enum AnnotationRenderer {
                       color: shape.color, lineWidth: lineWidth)
 
         case .pen, .marker:
-            guard shape.points.count > 1 else { return }
+            guard !shape.points.isEmpty else { return }
+            let points = shape.points.map(space.point)
             let path = NSBezierPath()
             path.lineWidth = shape.tool == .marker ? max(lineWidth, 12 * space.scale) : lineWidth
             path.lineCapStyle = .round
             path.lineJoinStyle = .round
-            path.move(to: space.point(shape.points[0]))
-            for point in shape.points.dropFirst() {
-                path.line(to: space.point(point))
+            if points.count == 1 {
+                // A click with no drag still leaves a dot.
+                let dot = CGRect(x: points[0].x - path.lineWidth / 2,
+                                 y: points[0].y - path.lineWidth / 2,
+                                 width: path.lineWidth,
+                                 height: path.lineWidth)
+                shape.color.setFill()
+                NSBezierPath(ovalIn: dot).fill()
+                return
+            }
+            // Smooth through the midpoints: the pointer samples are coarse, and
+            // joining them straight looks like a polygon instead of a stroke.
+            path.move(to: points[0])
+            if points.count == 2 {
+                path.line(to: points[1])
+            } else {
+                var from = points[0]
+                for index in 1..<(points.count - 1) {
+                    let control = points[index]
+                    let next = points[index + 1]
+                    let middle = CGPoint(x: (control.x + next.x) / 2, y: (control.y + next.y) / 2)
+                    // Quadratic through (from, control, middle), spelled as cubic:
+                    // NSBezierPath has no quadratic.
+                    let c1 = CGPoint(x: from.x + 2.0 / 3.0 * (control.x - from.x),
+                                     y: from.y + 2.0 / 3.0 * (control.y - from.y))
+                    let c2 = CGPoint(x: middle.x + 2.0 / 3.0 * (control.x - middle.x),
+                                     y: middle.y + 2.0 / 3.0 * (control.y - middle.y))
+                    path.curve(to: middle, controlPoint1: c1, controlPoint2: c2)
+                    from = middle
+                }
+                path.line(to: points[points.count - 1])
             }
             let colour = shape.tool == .marker ? shape.color.withAlphaComponent(0.35) : shape.color
             colour.setStroke()
