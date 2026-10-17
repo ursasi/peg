@@ -1,12 +1,28 @@
 import AppKit
 
-/// The clothesline: a taut line under the menu bar with the latest shots
-/// hanging from it. No background panel — only the line and the cards are
-/// drawn, so it reads as a line rather than a strip.
+/// The clothesline: a rope that sags under the menu bar with shots pegged to
+/// it. The look follows Tendedero's rope: a parabola, a dark pass for the
+/// shadow, a mid-grey core and a faint highlight, fading out at both ends.
 final class ShelfContentView: NSView {
-    static let lineY: CGFloat = 30
-    static let cardHeight: CGFloat = 92
-    static let height: CGFloat = lineY + cardHeight + 12
+    static let ropeTop: CGFloat = 22
+
+    static var ropeSag: (CGFloat) -> CGFloat = { width in min(30, width * 0.018) }
+
+    /// Panel height: rope + sag + peg + card + a little air.
+    static let height: CGFloat = ropeTop + 26 + 18 + 92 + 10
+
+    static func ropeY(x: CGFloat, width: CGFloat) -> CGFloat {
+        guard width > 0 else { return ropeTop }
+        let f = min(1, max(0, x / width))
+        return ropeTop + 4 * ropeSag(width) * f * (1 - f)
+    }
+
+    /// Radians, for tilting a card so it hangs perpendicular to the rope.
+    static func ropeSlope(x: CGFloat, width: CGFloat) -> CGFloat {
+        guard width > 0 else { return 0 }
+        let f = min(1, max(0, x / width))
+        return 4 * ropeSag(width) * (1 - 2 * f) / width
+    }
 
     private let header = NSTextField(labelWithString: "")
     private let hint = NSTextField(labelWithString: "")
@@ -25,14 +41,14 @@ final class ShelfContentView: NSView {
         super.init(frame: frameRect)
 
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.85)
-        shadow.shadowBlurRadius = 3
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.9)
+        shadow.shadowBlurRadius = 4
         shadow.shadowOffset = NSSize(width: 0, height: 1)
         header.attributedStringValue = NSAttributedString(
             string: "PEG",
             attributes: [
                 .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .bold),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.85),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.8),
                 .kern: 2.5,
                 .shadow: shadow
             ])
@@ -40,7 +56,7 @@ final class ShelfContentView: NSView {
 
         hint.alignment = .right
         hint.attributedStringValue = Self.text("⌃⌥X 截图　·　点图复制　·　双击打开　·　拖出去用　·　⌃⌥S 收起",
-                                               size: 10, alpha: 0.62)
+                                               size: 10, alpha: 0.6)
         addSubview(hint)
 
         emptyLabel.attributedStringValue = Self.text("按 ⌃⌥X 截一张，它就挂在这根线上",
@@ -54,6 +70,11 @@ final class ShelfContentView: NSView {
         scroll.documentView = strip
         addSubview(scroll)
 
+        let rope = RopeView(frame: bounds)
+        rope.autoresizingMask = [.width, .height]
+        addSubview(rope)
+
+        strip.host = self
         strip.onCopy = { [weak self] item in self?.onCopy?(item) }
         strip.onOpen = { [weak self] item in self?.onOpen?(item) }
         strip.onSaveToDesktop = { [weak self] item in self?.onSaveToDesktop?(item) }
@@ -77,20 +98,19 @@ final class ShelfContentView: NSView {
 
     override func layout() {
         super.layout()
-        let side: CGFloat = 24
+        let side: CGFloat = 26
         header.sizeToFit()
-        header.frame.origin = NSPoint(x: side, y: 6)
+        header.frame.origin = NSPoint(x: side, y: 4)
         hint.sizeToFit()
-        hint.frame.origin = NSPoint(x: bounds.width - hint.frame.width - side, y: 7)
+        hint.frame.origin = NSPoint(x: bounds.width - hint.frame.width - side, y: 5)
         emptyLabel.sizeToFit()
-        emptyLabel.frame.origin = NSPoint(x: side, y: Self.lineY + 34)
+        emptyLabel.frame.origin = NSPoint(
+            x: bounds.midX - emptyLabel.frame.width / 2,
+            y: Self.ropeY(x: bounds.midX, width: bounds.width) + 34)
 
-        scroll.frame = NSRect(x: side - 2,
-                              y: Self.lineY + 6,
-                              width: bounds.width - (side - 2) * 2,
-                              height: Self.cardHeight - 6)
-        strip.setFrameSize(NSSize(width: max(strip.intrinsicContentSize.width, scroll.frame.width),
-                                  height: Self.cardHeight - 6))
+        scroll.frame = bounds
+        strip.setFrameSize(NSSize(width: max(strip.intrinsicContentSize.width, bounds.width),
+                                  height: bounds.height))
         strip.needsLayout = true
     }
 
@@ -106,31 +126,65 @@ final class ShelfContentView: NSView {
         ])
     }
 
+}
+
+/// The rope itself, drawn above the cards so nothing can cover it.
+final class RopeView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
     override func draw(_ dirtyRect: NSRect) {
-        let side: CGFloat = 24
-        let lineY = Self.lineY
+        let width = bounds.width
+        guard width > 0 else { return }
+        let startX: CGFloat = -24
+        let endX = width + 24
+        let steps = 320
+        let fadeSpan: CGFloat = 0.07
 
-        // Two passes: a dark underlay and a light top. Reads on a white page
-        // and on a dark terminal without any background panel.
-        let dark = NSBezierPath()
-        dark.move(to: NSPoint(x: side, y: lineY))
-        dark.line(to: NSPoint(x: bounds.maxX - side, y: lineY))
-        dark.lineWidth = 3
-        NSColor.black.withAlphaComponent(0.35).setStroke()
-        dark.stroke()
-
-        let light = NSBezierPath()
-        light.move(to: NSPoint(x: side, y: lineY))
-        light.line(to: NSPoint(x: bounds.maxX - side, y: lineY))
-        light.lineWidth = 1.2
-        NSColor.white.withAlphaComponent(0.85).setStroke()
-        light.stroke()
-
-        // Small hooks at both ends.
-        NSColor.white.withAlphaComponent(0.8).setFill()
-        for x in [side, bounds.maxX - side] {
-            NSBezierPath(ovalIn: NSRect(x: x - 2.5, y: lineY - 2, width: 5, height: 5)).fill()
+        var previous = NSPoint(x: startX, y: ShelfContentView.ropeY(x: startX, width: width))
+        for step in 1...steps {
+            let t = CGFloat(step) / CGFloat(steps)
+            let x = startX + (endX - startX) * t
+            let current = NSPoint(x: x, y: ShelfContentView.ropeY(x: x, width: width))
+            let alpha = min(1, min(t / fadeSpan, (1 - t) / fadeSpan))
+            stroke(from: previous, to: current, alpha: alpha)
+            previous = current
         }
+    }
+
+    /// One segment of the rope: shadow-bearing core plus a highlight above it.
+    private func stroke(from: NSPoint, to: NSPoint, alpha: CGFloat) {
+        guard alpha > 0.01 else { return }
+
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.4 * alpha)
+        shadow.shadowBlurRadius = 2.5
+        shadow.shadowOffset = NSSize(width: 0, height: 1.4)
+        shadow.set()
+
+        let core = NSBezierPath()
+        core.move(to: from)
+        core.line(to: to)
+        core.lineWidth = 1.3
+        core.lineWidth = 2.6
+        NSColor.black.withAlphaComponent(0.30 * alpha).setStroke()
+        core.stroke()
+
+        core.lineWidth = 1.9
+        NSColor(white: 0.58, alpha: 0.95 * alpha).setStroke()
+        core.stroke()
+
+        NSShadow().set()
+
+        let highlight = NSBezierPath()
+        highlight.move(to: NSPoint(x: from.x, y: from.y - 0.7))
+        highlight.line(to: NSPoint(x: to.x, y: to.y - 0.7))
+        highlight.lineWidth = 0.6
+        NSColor.white.withAlphaComponent(0.65 * alpha).setStroke()
+        highlight.stroke()
+
+
     }
 }
 
@@ -151,7 +205,9 @@ final class HorizontalScrollView: NSScrollView {
 }
 
 final class ThumbStrip: NSView {
-    private static let gap: CGFloat = 14
+    private static let gap: CGFloat = 26
+
+    weak var host: NSView?
     private var thumbs: [ThumbView] = []
 
     var onCopy: ((ShotItem) -> Void)?
@@ -164,6 +220,7 @@ final class ThumbStrip: NSView {
     override var isFlipped: Bool { true }
 
     func setItems(_ items: [ShotItem]) {
+        let previous = Set(thumbs.map { $0.item.url })
         thumbs.forEach { $0.removeFromSuperview() }
         thumbs = items.map { item in
             let view = ThumbView(item: item)
@@ -174,6 +231,9 @@ final class ThumbStrip: NSView {
             view.onTrash = { [weak self] in self?.onTrash?(item) }
             view.onOCR = { [weak self] in self?.onOCR?(item) }
             addSubview(view)
+            if !previous.isEmpty, !previous.contains(item.url) {
+                view.dropIn()
+            }
             return view
         }
         invalidateIntrinsicContentSize()
@@ -182,22 +242,44 @@ final class ThumbStrip: NSView {
 
     override var intrinsicContentSize: NSSize {
         let width = thumbs.reduce(0) { $0 + $1.intrinsicContentSize.width + Self.gap }
-        return NSSize(width: max(0, width - Self.gap), height: ShelfContentView.cardHeight - 6)
+        return NSSize(width: max(0, width - Self.gap + 52), height: ShelfContentView.height)
     }
 
     override func layout() {
         super.layout()
-        var x: CGFloat = 0
+        let total = intrinsicContentSize.width
+        var x = max(26, (bounds.width - (intrinsicContentSize.width - 52)) / 2)
+        x = max(26, x)
         for thumb in thumbs {
             let size = thumb.intrinsicContentSize
-            thumb.frame = NSRect(x: x, y: 0, width: size.width, height: size.height)
+            let ropeX = x + size.width / 2
+            let ropeY = ShelfContentView.ropeY(x: ropeX, width: bounds.width)
+            let slope = atan(ShelfContentView.ropeSlope(x: ropeX, width: bounds.width))
+            thumb.tilt = slope + thumb.item.tilt
+            thumb.frame = NSRect(x: x, y: ropeY - ThumbView.pegHeight, width: size.width, height: size.height)
             x += size.width + Self.gap
         }
     }
 }
 
+extension ShotItem {
+    /// A small, stable tilt so the line looks casually hung rather than laid out.
+    var tilt: CGFloat {
+        var hash: UInt64 = 1469598103934665603
+        for byte in url.lastPathComponent.utf8 {
+            hash = (hash ^ UInt64(byte)) &* 1099511628211
+        }
+        let unit = CGFloat(hash % 1000) / 1000 - 0.5
+        return unit * 0.055   // about ±1.6°
+    }
+}
+
 final class ThumbView: NSView, NSDraggingSource {
+    static let pegHeight: CGFloat = 15
+    static let frameInset: CGFloat = 5
+
     let item: ShotItem
+    var tilt: CGFloat = 0 { didSet { needsDisplay = true } }
     var onCopy: (() -> Void)?
     var onOpen: (() -> Void)?
     var onSaveToDesktop: (() -> Void)?
@@ -209,6 +291,29 @@ final class ThumbView: NSView, NSDraggingSource {
         didSet { needsDisplay = true }
     }
     private var dragged = false
+    private var dropOffset: CGFloat = 0 {
+        didSet { needsDisplay = true }
+    }
+    private var dropTimer: Timer?
+
+    /// New shots fall onto the line.
+    func dropIn() {
+        dropTimer?.invalidate()
+        let start = Date()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let progress = min(1, Date().timeIntervalSince(start) / 0.42)
+            let remaining = (1 - progress) * (1 - progress)
+            self.dropOffset = -46 * remaining
+            if progress >= 1 {
+                timer.invalidate()
+                self.dropTimer = nil
+                self.dropOffset = 0
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        dropTimer = timer
+    }
 
     init(item: ShotItem) {
         self.item = item
@@ -222,11 +327,11 @@ final class ThumbView: NSView, NSDraggingSource {
     override var isFlipped: Bool { true }
 
     override var intrinsicContentSize: NSSize {
-        let maxWidth: CGFloat = 230
-        let maxHeight: CGFloat = 80
+        let maxWidth: CGFloat = 210
+        let maxHeight: CGFloat = 76
         let imageSize = item.thumb.size
         guard imageSize.width > 0, imageSize.height > 0 else {
-            return NSSize(width: maxWidth, height: maxHeight)
+            return NSSize(width: maxWidth, height: maxHeight + Self.pegHeight)
         }
         let aspect = imageSize.width / imageSize.height
         var height = maxHeight
@@ -235,7 +340,8 @@ final class ThumbView: NSView, NSDraggingSource {
             width = maxWidth
             height = width / aspect
         }
-        return NSSize(width: max(46, width), height: max(28, height))
+        return NSSize(width: max(44, width) + Self.frameInset * 2,
+                      height: max(26, height) + Self.frameInset * 2 + Self.pegHeight)
     }
 
     override func updateTrackingAreas() {
@@ -255,46 +361,86 @@ final class ThumbView: NSView, NSDraggingSource {
     override func mouseExited(with event: NSEvent) { hovering = false }
 
     override func draw(_ dirtyRect: NSRect) {
-        let inset: CGFloat = hovering ? 0.5 : 1.5
-        let card = bounds.insetBy(dx: inset, dy: inset)
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let cardTop = Self.pegHeight
+        let card = CGRect(x: 0, y: cardTop,
+                          width: bounds.width,
+                          height: bounds.height - cardTop)
 
-        NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.65)
-        shadow.shadowBlurRadius = hovering ? 14 : 7
-        shadow.shadowOffset = NSSize(width: 0, height: hovering ? 5 : 3)
-        shadow.set()
+        // Tilt around the point where the peg holds the card.
+        context.saveGState()
+        context.translateBy(x: card.midX, y: cardTop + dropOffset)
+        context.rotate(by: tilt)
+        context.translateBy(x: -card.midX, y: -cardTop)
 
-        let path = NSBezierPath(roundedRect: card, xRadius: 7, yRadius: 7)
-        NSColor.black.withAlphaComponent(0.35).setFill()
-        path.fill()
-        NSGraphicsContext.restoreGraphicsState()
+        drawPeg(at: CGPoint(x: card.midX, y: cardTop))
+        drawFrame(card)
 
-        NSGraphicsContext.saveGraphicsState()
-        path.addClip()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        item.thumb.draw(in: card)
-        NSGraphicsContext.restoreGraphicsState()
-
-        (hovering ? NSColor.white.withAlphaComponent(0.85) : NSColor.white.withAlphaComponent(0.28)).setStroke()
-        path.lineWidth = 1
-        path.stroke()
-
-        drawClip(at: card)
+        context.restoreGState()
     }
 
-    /// A little peg where the card meets the line.
-    private func drawClip(at card: CGRect) {
+    /// A clothespin: two legs, a gap and a spring.
+    private func drawPeg(at point: CGPoint) {
         let width: CGFloat = 9
-        let height: CGFloat = 13
-        let peg = CGRect(x: card.midX - width / 2, y: card.minY - height * 0.55,
-                         width: width, height: height)
-        NSColor(calibratedWhite: 0.9, alpha: 0.92).setFill()
-        NSBezierPath(roundedRect: peg, xRadius: 2.5, yRadius: 2.5).fill()
-        NSColor.black.withAlphaComponent(0.25).setStroke()
-        let outline = NSBezierPath(roundedRect: peg, xRadius: 2.5, yRadius: 2.5)
-        outline.lineWidth = 0.5
-        outline.stroke()
+        let height: CGFloat = 19
+        let body = CGRect(x: point.x - width / 2, y: point.y - height + 2, width: width, height: height)
+
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
+        shadow.shadowBlurRadius = 3
+        shadow.shadowOffset = NSSize(width: 0, height: 1.5)
+        shadow.set()
+
+        NSColor(calibratedWhite: 0.88, alpha: 1).setFill()
+        let pin = NSBezierPath(roundedRect: body, xRadius: 2.5, yRadius: 2.5)
+        pin.fill()
+
+        NSShadow().set()
+        NSColor(calibratedWhite: 0.25, alpha: 0.55).setStroke()
+        pin.lineWidth = 0.6
+        pin.stroke()
+
+        // The slit between the legs.
+        NSColor(calibratedWhite: 0.55, alpha: 0.9).setFill()
+        NSBezierPath(rect: CGRect(x: body.midX - 0.5, y: body.minY + 5,
+                                  width: 1, height: body.height - 8)).fill()
+
+        // The spring.
+        let spring = NSBezierPath(ovalIn: CGRect(x: body.midX - 2.4, y: body.minY + 7,
+                                                 width: 4.8, height: 4.8))
+        NSColor(calibratedWhite: 0.45, alpha: 1).setStroke()
+        spring.lineWidth = 1
+        spring.stroke()
+    }
+
+    private func drawFrame(_ card: CGRect) {
+        let outward: CGFloat = hovering ? 1 : 0
+        let frameRect = card.insetBy(dx: -outward, dy: -outward)
+
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(hovering ? 0.5 : 0.38)
+        shadow.shadowBlurRadius = hovering ? 14 : 9
+        shadow.shadowOffset = NSSize(width: 0, height: hovering ? 6 : 4)
+        shadow.set()
+
+        // A paper-white frame, the way a print looks pegged to a line.
+        NSColor(calibratedWhite: 0.97, alpha: 0.96).setFill()
+        let frame = NSBezierPath(roundedRect: frameRect, xRadius: 8, yRadius: 8)
+        frame.fill()
+
+        NSShadow().set()
+
+        let photo = frameRect.insetBy(dx: Self.frameInset, dy: Self.frameInset)
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: photo, xRadius: 5, yRadius: 5).addClip()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        item.thumb.draw(in: photo)
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSColor.black.withAlphaComponent(hovering ? 0.22 : 0.14).setStroke()
+        let border = NSBezierPath(roundedRect: frameRect, xRadius: 8, yRadius: 8)
+        border.lineWidth = 1
+        border.stroke()
     }
 
     override func mouseDown(with event: NSEvent) {
