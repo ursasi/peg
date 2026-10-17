@@ -77,6 +77,7 @@ final class ShelfContentView: NSView {
     var onReveal: ((ShotItem) -> Void)?
     var onTrash: ((ShotItem) -> Void)?
     var onOCR: ((ShotItem) -> Void)?
+    var onPin: ((ShotItem) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -125,6 +126,7 @@ final class ShelfContentView: NSView {
         strip.onReveal = { [weak self] item in self?.onReveal?(item) }
         strip.onTrash = { [weak self] item in self?.onTrash?(item) }
         strip.onOCR = { [weak self] item in self?.onOCR?(item) }
+        strip.onPin = { [weak self] item in self?.onPin?(item) }
     }
 
     @available(*, unavailable)
@@ -271,6 +273,7 @@ final class ThumbStrip: NSView {
     var onReveal: ((ShotItem) -> Void)?
     var onTrash: ((ShotItem) -> Void)?
     var onOCR: ((ShotItem) -> Void)?
+    var onPin: ((ShotItem) -> Void)?
 
     override var isFlipped: Bool { true }
 
@@ -288,6 +291,7 @@ final class ThumbStrip: NSView {
             view.onReveal = { [weak self] in self?.onReveal?(item) }
             view.onTrash = { [weak self] in self?.onTrash?(item) }
             view.onOCR = { [weak self] in self?.onOCR?(item) }
+            view.onPin = { [weak self] in self?.onPin?(item) }
             view.strip = self
             addSubview(view)
             if !previous.isEmpty, !previous.contains(item.url) {
@@ -358,6 +362,7 @@ final class ThumbView: NSView, NSDraggingSource {
     var onReveal: (() -> Void)?
     var onTrash: (() -> Void)?
     var onOCR: (() -> Void)?
+    var onPin: (() -> Void)?
 
     private var hovering = false {
         didSet { needsDisplay = true }
@@ -662,6 +667,7 @@ final class ThumbView: NSView, NSDraggingSource {
         cancelPreview()
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: "复制") { [weak self] in self?.onCopy?() })
+        menu.addItem(ClosureMenuItem(title: "贴到屏幕上") { [weak self] in self?.onPin?() })
         menu.addItem(ClosureMenuItem(title: "识别文字") { [weak self] in self?.onOCR?() })
         menu.addItem(ClosureMenuItem(title: "用「预览」打开") { [weak self] in self?.onOpen?() })
         menu.addItem(ClosureMenuItem(title: "保存到桌面") { [weak self] in self?.onSaveToDesktop?() })

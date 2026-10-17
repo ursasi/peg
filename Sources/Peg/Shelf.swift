@@ -242,6 +242,9 @@ final class Shelf {
         content.onReveal = { item in Storage.reveal(item.url) }
         content.onSaveToDesktop = { [weak self] item in self?.saveToDesktop(item) }
         content.onTrash = { [weak self] item in self?.remove(item) }
+        content.onPin = { item in
+            PinController.shared.pinFile(at: item.url)
+        }
         content.onOCR = { [weak self] item in self?.recognize(item) }
         content.setItems(items)
         self.content = content

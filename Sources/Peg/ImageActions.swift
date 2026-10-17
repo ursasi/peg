@@ -32,14 +32,8 @@ enum Clip {
 }
 
 enum Storage {
-    /// ~/Pictures/Peg
-    static let folder: URL = {
-        let base = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        let url = base.appendingPathComponent("Peg", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }()
+    /// Wherever the settings window points, ~/Pictures/Peg by default.
+    static var folder: URL { Prefs.ensureFolder() }
 
     private static let stamp: DateFormatter = {
         let formatter = DateFormatter()
@@ -50,16 +44,28 @@ enum Storage {
 
     @discardableResult
     static func save(_ image: CGImage) -> URL? {
-        var url = folder.appendingPathComponent("Peg \(stamp.string(from: Date())).png")
+        let format = Prefs.format
+        let folder = folder
+        var url = folder.appendingPathComponent("Peg \(stamp.string(from: Date())).\(format.fileExtension)")
         var counter = 2
         while FileManager.default.fileExists(atPath: url.path) {
-            url = folder.appendingPathComponent("Peg \(stamp.string(from: Date()))-\(counter).png")
+            url = folder.appendingPathComponent(
+                "Peg \(stamp.string(from: Date()))-\(counter).\(format.fileExtension)")
             counter += 1
         }
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL,
-                                                               UTType.png.identifier as CFString,
+                                                               format.utType.identifier as CFString,
                                                                1, nil) else { return nil }
-        CGImageDestinationAddImage(destination, image, nil)
+        if format == .jpeg {
+            // JPEG has no alpha; flatten onto white first so the result is not
+            // a black rectangle where the screenshot was transparent.
+            let properties: [CFString: Any] = [
+                kCGImageDestinationLossyCompressionQuality: Prefs.quality
+            ]
+            CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+        } else {
+            CGImageDestinationAddImage(destination, image, nil)
+        }
         guard CGImageDestinationFinalize(destination) else { return nil }
         return url
     }

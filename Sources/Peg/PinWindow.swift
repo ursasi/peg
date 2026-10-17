@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import ImageIO
 
 /// Screenshots that stay on screen. Drag to move, scroll to zoom, right click
 /// for the rest. Kept above normal windows and visible on every Space.
@@ -16,6 +17,56 @@ final class PinController {
         }
         pins.append(window)
         window.orderFrontRegardless()
+    }
+
+    /// Pin whatever image is on the clipboard, centred on the active screen.
+    @discardableResult
+    func pinFromPasteboard() -> Bool {
+        guard let image = PinController.imageFromPasteboard() else { return false }
+        pinCentered(image, on: NSScreen.main)
+        return true
+    }
+
+    /// Pin a file (used by the clothesline), at natural size, centred.
+    func pinFile(at url: URL) {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+        pinCentered(image, on: NSScreen.main)
+    }
+
+    func pinCentered(_ image: CGImage, on screen: NSScreen?) {
+        guard let visible = (screen ?? NSScreen.main)?.visibleFrame else { return }
+        let scale = (screen ?? NSScreen.main)?.backingScaleFactor ?? 2
+        var size = NSSize(width: CGFloat(image.width) / scale,
+                          height: CGFloat(image.height) / scale)
+        // Never open a pin larger than the screen.
+        let limit = NSSize(width: visible.width * 0.85, height: visible.height * 0.85)
+        let factor = min(1, min(limit.width / max(1, size.width), limit.height / max(1, size.height)))
+        size.width *= factor
+        size.height *= factor
+        let rect = CGRect(x: visible.midX - size.width / 2,
+                          y: visible.midY - size.height / 2,
+                          width: size.width,
+                          height: size.height)
+        pin(image, at: rect)
+    }
+
+    static func imageFromPasteboard() -> CGImage? {
+        let pasteboard = NSPasteboard.general
+        if let image = NSImage(pasteboard: pasteboard) {
+            var rect = CGRect(origin: .zero, size: image.size)
+            if let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) {
+                return cgImage
+            }
+        }
+        // Fall back to a file copied in Finder.
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self],
+                                             options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           let url = urls.first,
+           let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+            return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        }
+        return nil
     }
 
     func closeAll() {

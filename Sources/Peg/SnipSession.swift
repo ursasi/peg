@@ -213,7 +213,7 @@ final class SnipSession {
 
         switch finish {
         case .copyAndSave:
-            Clip.copy(cropped.image)
+            if Prefs.autoCopy { Clip.copy(cropped.image) }
             if let url = Storage.save(cropped.image) {
                 Shelf.shared.insert(url)
             }

@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var snipHotKey: HotKey?
     private var shelfHotKey: HotKey?
+    private var pastePinHotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
@@ -13,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Development helpers: PEG_DEMO=shelf|snip
         switch ProcessInfo.processInfo.environment["PEG_DEMO"] {
+        case "settings":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                MainActor.assumeIsolated { SettingsWindow.shared.show() }
+            }
         case "shelf":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated { Shelf.shared.reveal(autoHideAfter: 30) }
@@ -68,6 +73,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         shelfHotKey = HotKey(.shelf) {
             MainActor.assumeIsolated { Shelf.shared.toggle() }
         }
+
+        pastePinHotKey = HotKey(.pastePin) {
+            MainActor.assumeIsolated {
+                if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
+            }
+        }
     }
 
     private func setUpStatusItem() {
@@ -100,6 +111,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         sizeItem.submenu = sizeMenu
         menu.addItem(sizeItem)
+
+        let pastePin = NSMenuItem(title: "贴剪贴板图片", action: #selector(pastePin), keyEquivalent: "")
+        menu.addItem(pastePin)
+
+        let settings = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
+        menu.addItem(settings)
 
         let openFolder = NSMenuItem(title: "打开图片文件夹", action: #selector(openFolder), keyEquivalent: "")
         openFolder.target = self
@@ -146,6 +163,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for item in sender.menu?.items ?? [] {
             item.state = item.tag == sender.tag ? .on : .off
         }
+    }
+
+    @objc private func pastePin() {
+        if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
+    }
+
+    @objc private func openSettings() {
+        SettingsWindow.shared.show()
     }
 
     @objc private func openFolder() {
