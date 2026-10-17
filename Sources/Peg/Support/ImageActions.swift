@@ -19,13 +19,19 @@ enum Clip {
     }
 
     static func copy(contentsOf url: URL) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+
+        // A GIF copied as a picture pastes as its first frame, which is the one
+        // thing it must not do. Put the file on the clipboard instead so Finder,
+        // mail and chat all get the animation.
+        if url.pathExtension.lowercased() == "gif" {
+            pasteboard.writeObjects([url as NSURL])
+            return
+        }
         if let image = NSImage(contentsOf: url) {
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
             pasteboard.writeObjects([image])
         } else {
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
             pasteboard.writeObjects([url as NSURL])
         }
     }

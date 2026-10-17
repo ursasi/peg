@@ -38,6 +38,7 @@ final class PinWalk {
         guard !items.isEmpty else { return nil }
         let item = items[min(cursor, items.count - 1)]
         cursor = (cursor + 1) % items.count
+        DebugLog.log("pinwalk \(cursor)/\(items.count) -> \(PinWalk.describe(item))")
         return item
     }
 
@@ -49,16 +50,21 @@ final class PinWalk {
     }
 
     private func rebuild() {
-        var next: [Item] = []
+        struct Candidate {
+            let date: Date
+            let item: Item
+        }
+
+        var candidates: [Candidate] = []
         var clipboardShots: [(date: Date, size: CGSize)] = []
 
         for entry in ClipboardHistory.shared.entries {
             switch entry.content {
             case .image(let data):
-                next.append(.image(data))
+                candidates.append(Candidate(date: entry.date, item: .image(data)))
                 if let size = entry.pixelSize { clipboardShots.append((entry.date, size)) }
             case .text(let text):
-                next.append(.text(text))
+                candidates.append(Candidate(date: entry.date, item: .text(text)))
             }
         }
 
@@ -66,21 +72,38 @@ final class PinWalk {
         // re-encoded on its way to disk and to the pasteboard, so the bytes
         // differ: match on "written at about the same moment, same pixels".
         for url in HistoryStore.files() {
-            if isAlreadyOnClipboard(url, in: clipboardShots) { continue }
-            next.append(.file(url))
+            let written = modificationDate(of: url)
+            if isAlreadyOnClipboard(written: written, size: pixelSize(of: url),
+                                    in: clipboardShots) { continue }
+            candidates.append(Candidate(date: written, item: .file(url)))
         }
 
-        items = next
+        // One merged timeline: newest first, no matter which side it came from.
+        // Appending the disk shots after the clipboard ones would put an old
+        // capture ahead of something copied a second ago.
+        candidates.sort { $0.date > $1.date }
+        items = candidates.map(\.item)
         builtAt = Date()
     }
 
-    private func isAlreadyOnClipboard(_ url: URL,
-                                      in shots: [(date: Date, size: CGSize)]) -> Bool {
-        guard !shots.isEmpty else { return false }
-        let written = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+    private static func describe(_ item: Item) -> String {
+        switch item {
+        case .image(let data): return "image(\(data.count) bytes)"
+        case .text(let text): return "text(\(text.prefix(24)))"
+        case .file(let url): return "file(\(url.lastPathComponent))"
+        }
+    }
+
+    private func modificationDate(of url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate ?? .distantPast
+    }
+
+    private func isAlreadyOnClipboard(written: Date,
+                                      size: CGSize?,
+                                      in shots: [(date: Date, size: CGSize)]) -> Bool {
+        guard !shots.isEmpty, let size else { return false }
         guard Date().timeIntervalSince(written) < 120 else { return false }
-        guard let size = pixelSize(of: url) else { return false }
         return shots.contains { shot in
             abs(shot.date.timeIntervalSince(written)) < 5 && shot.size == size
         }
