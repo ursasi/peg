@@ -31,42 +31,21 @@ final class PinController {
     /// clipboard holds neither we walk back through the shots on disk.
     @discardableResult
     func pinFromPasteboard() -> Bool {
-        // Walk back through recent copies; pressing twice must not stack the
-        // same picture.
-        if let entry = ClipboardHistory.shared.next() {
-            switch entry {
-            case .image(let data):
-                guard let image = NSImage(data: data) else { return false }
-                var rect = CGRect(origin: .zero, size: image.size)
-                guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
-                else { return false }
-                pinCentered(cgImage, on: NSScreen.main)
-            case .text(let text):
-                pinText(text)
-            }
-            return true
-        }
-        if let image = PinController.imageFromPasteboard() {
-            pinCentered(image, on: NSScreen.main)
-            return true
-        }
-        if let text = PinController.textFromPasteboard() {
+        // One walk: recent copies first, then the shots on disk that were never
+        // copied. Pressing twice must not stack the same picture.
+        guard let item = PinWalk.shared.next() else { return false }
+        switch item {
+        case .image(let data):
+            guard let image = NSImage(data: data) else { return false }
+            var rect = CGRect(origin: .zero, size: image.size)
+            guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+            else { return false }
+            pinCentered(cgImage, on: NSScreen.main)
+        case .text(let text):
             pinText(text)
-            return true
+        case .file(let url):
+            pinFile(at: url)
         }
-        return pinLastShot()
-    }
-
-    /// Pin the newest shot on disk that is not already floating here.
-    @discardableResult
-    func pinLastShot() -> Bool {
-        let files = HistoryStore.files()
-        guard !files.isEmpty else { return false }
-        if Date().timeIntervalSince(lastHistoryPin) > 12 { historyCursor = 0 }
-        let index = min(historyCursor, files.count - 1)
-        historyCursor = index + 1
-        lastHistoryPin = Date()
-        pinFile(at: files[index])
         return true
     }
 
@@ -74,6 +53,7 @@ final class PinController {
     func resetHistoryCursor() {
         historyCursor = 0
         lastHistoryPin = .distantPast
+        PinWalk.shared.reset()
     }
 
     func pinText(_ text: String) {

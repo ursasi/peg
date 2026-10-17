@@ -64,7 +64,7 @@ final class PreviewPanel {
 
     func hide(after delay: TimeInterval = 0) {
         hideWork?.cancel()
-        guard let panel else { return }
+        guard self.panel != nil else { return }
         let work = DispatchWorkItem { [weak self] in
             guard let self, let panel = self.panel else { return }
             NSAnimationContext.runAnimationGroup({ context in

@@ -15,15 +15,21 @@ import CoreGraphics
 final class ClipboardHistory {
     static let shared = ClipboardHistory()
 
-    enum Entry {
+    enum Content {
         case image(Data)   // PNG bytes, so the buffer stays small
         case text(String)
+    }
+
+    struct Entry {
+        var content: Content
+        var date: Date
+        /// Pixel size, only for images: used to spot the same shot twice.
+        var pixelSize: CGSize?
     }
 
     private(set) var entries: [Entry] = []
     private var changeCount = NSPasteboard.general.changeCount
     private var cursor = 0
-    private var lastUsed = Date.distantPast
     private var timer: Timer?
 
     private let limit = 15
@@ -51,17 +57,28 @@ final class ClipboardHistory {
     private func record() {
         let pasteboard = NSPasteboard.general
         if let data = pngData(from: pasteboard) {
-            if case .image(let previous)? = entries.first, previous == data { return }
-            entries.insert(.image(data), at: 0)
+            if case .image(let previous)? = entries.first?.content, previous == data { return }
+            entries.insert(Entry(content: .image(data),
+                                 date: Date(),
+                                 pixelSize: pixelSize(ofPNG: data)), at: 0)
         } else if let text = pasteboard.string(forType: .string), !text.isEmpty,
                   text.count <= maxTextLength {
-            if case .text(let previous)? = entries.first, previous == text { return }
-            entries.insert(.text(text), at: 0)
+            if case .text(let previous)? = entries.first?.content, previous == text { return }
+            entries.insert(Entry(content: .text(text), date: Date(), pixelSize: nil), at: 0)
         } else {
             return
         }
         if entries.count > limit { entries.removeLast(entries.count - limit) }
         cursor = 0
+    }
+
+    private func pixelSize(ofPNG data: Data) -> CGSize? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        return CGSize(width: width, height: height)
     }
 
     private func pngData(from pasteboard: NSPasteboard) -> Data? {
@@ -78,23 +95,6 @@ final class ClipboardHistory {
             return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
         }
         return nil
-    }
-
-    /// Next older copy. Pressing the shortcut repeatedly walks back, then loops.
-    /// After a pause it starts over from the newest, the way the shelf's pin
-    /// walk behaves.
-    func next() -> Entry? {
-        guard !entries.isEmpty else { return nil }
-        if Date().timeIntervalSince(lastUsed) > 12 { cursor = 0 }
-        lastUsed = Date()
-        let entry = entries[min(cursor, entries.count - 1)]
-        cursor = (cursor + 1) % entries.count
-        return entry
-    }
-
-    func resetCursor() {
-        cursor = 0
-        lastUsed = .distantPast
     }
 
     func clear() {
