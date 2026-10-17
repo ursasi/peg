@@ -52,7 +52,7 @@ final class HistoryWindow: NSWindowController {
     private var all: [ShotItem] = []
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 640),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 560),
                               styleMask: [.titled, .closable, .resizable],
                               backing: .buffered,
                               defer: false)
@@ -114,11 +114,11 @@ final class HistoryWindow: NSWindowController {
         NSLayoutConstraint.activate([
             header.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
             header.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            header.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
+            header.topAnchor.constraint(equalTo: content.topAnchor, constant: 14),
             header.heightAnchor.constraint(equalToConstant: 26),
 
-            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
+            scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
             scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
 
             hint.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
@@ -149,6 +149,25 @@ final class HistoryWindow: NSWindowController {
         let shown = needle.isEmpty ? all : all.filter { $0.url.lastPathComponent.lowercased().contains(needle) }
         grid.setItems(shown)
         countLabel.stringValue = "\(shown.count) 张"
+        fitWindow(to: shown.count)
+    }
+
+    /// Keep the window as tall as the shots need: a mostly empty window looks
+    /// like an unfinished app.
+    private func fitWindow(to count: Int) {
+        guard let window, let content = window.contentView else { return }
+        let usable = max(320, content.bounds.width - 32)
+        let columns = max(1, Int((usable + 12) / (158 + 12)))
+        let rows = max(1, (count + columns - 1) / columns)
+        let gridHeight = 32 + CGFloat(rows) * (124 + 12)
+        let chrome: CGFloat = 104
+        let target = min(700, max(300, gridHeight + chrome))
+        let delta = target - content.bounds.height
+        guard abs(delta) > 2 else { return }
+        var frame = window.frame
+        frame.size.height += delta
+        frame.origin.y -= delta
+        window.setFrame(frame, display: true, animate: false)
     }
 
     @objc private func searchChanged() {
@@ -186,9 +205,9 @@ final class HistoryGrid: NSView {
     private var cells: [HistoryCell] = []
     private var selected = 0
 
-    private let cellSize = NSSize(width: 168, height: 132)
-    private let gap: CGFloat = 14
-    private let padding: CGFloat = 14
+    private let cellSize = NSSize(width: 158, height: 124)
+    private let gap: CGFloat = 12
+    private let padding: CGFloat = 16
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
@@ -347,7 +366,7 @@ final class HistoryCell: NSView {
         } else if hovering {
             NSColor.quaternaryLabelColor.withAlphaComponent(0.10).setFill()
         } else {
-            NSColor.controlBackgroundColor.setFill()
+            NSColor.textBackgroundColor.setFill()
         }
         plate.fill()
 
