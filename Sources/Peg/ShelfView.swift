@@ -5,7 +5,7 @@ struct ShelfView: View {
     @ObservedObject var store: Shelf
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             header
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .bottom, spacing: 10) {
@@ -18,13 +18,12 @@ struct ShelfView: View {
                     }
                 }
                 .padding(.horizontal, 2)
-                .padding(.bottom, 6)
             }
-            .frame(height: 112)
+            .frame(height: 100)
         }
         .padding(.horizontal, 18)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(background)
         .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18,
@@ -77,7 +76,7 @@ private struct Thumb: View {
         Image(nsImage: item.thumb)
             .resizable()
             .aspectRatio(contentMode: .fit)
-            .frame(maxHeight: 100)
+            .frame(maxHeight: 96)
             .background(Color.black.opacity(0.3))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay {

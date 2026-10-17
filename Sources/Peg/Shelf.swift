@@ -23,33 +23,27 @@ final class Shelf: ObservableObject {
     private var panel: NSPanel?
     private var isShown = false
     private var hideWork: DispatchWorkItem?
-    private var monitors: [Any] = []
+    private var pollTimer: Timer?
     private var currentScreen: NSScreen?
 
-    private let height: CGFloat = 168
+    private let height: CGFloat = 148
     private let limit = 24
 
     // MARK: - Lifetime
 
     func start() {
         reload()
-        installPointerMonitors()
+        startPointerPolling()
     }
 
-    private func installPointerMonitors() {
-        let mask: NSEvent.EventTypeMask = [.mouseMoved]
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
-            // Both monitors deliver on the main thread.
+    /// Polling the pointer position needs no permissions at all, unlike a
+    /// global NSEvent monitor (which can be blocked or require Accessibility).
+    private func startPointerPolling() {
+        let timer = Timer(timeInterval: 0.09, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pointerMoved() }
-        }) {
-            monitors.append(global)
         }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
-            MainActor.assumeIsolated { self?.pointerMoved() }
-            return event
-        }) {
-            monitors.append(local)
-        }
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
     }
 
     // MARK: - Content
@@ -127,18 +121,23 @@ final class Shelf: ObservableObject {
 
         // Hang below the menu bar, not over it.
         let top = target.visibleFrame.maxY
-        let width = target.frame.width
-        let shown = NSRect(x: target.frame.minX, y: top - height, width: width, height: height)
-        let hidden = NSRect(x: target.frame.minX, y: top, width: width, height: height)
+        let shown = NSRect(x: target.frame.minX, y: top - height, width: target.frame.width, height: height)
 
         if isShown {
             if panel.frame != shown { panel.setFrame(shown, display: true) }
+            panel.alphaValue = 1
             panel.orderFrontRegardless()
         } else {
-            panel.setFrame(hidden, display: false)
-            panel.orderFrontRegardless()
-            panel.setFrame(shown, display: true, animate: true)
             isShown = true
+            panel.alphaValue = 0
+            panel.setFrame(shown.offsetBy(dx: 0, dy: 20), display: false)
+            panel.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.16
+                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().alphaValue = 1
+                panel.animator().setFrame(shown, display: true)
+            }
         }
 
         if let seconds { scheduleHide(after: seconds) }
@@ -149,17 +148,32 @@ final class Shelf: ObservableObject {
         hideWork = nil
         guard let panel, isShown else { return }
         isShown = false
-        var frame = panel.frame
-        frame.origin.y = (currentScreen?.visibleFrame.maxY ?? frame.maxY)
-        if animated {
-            panel.setFrame(frame, display: true, animate: true)
-        } else {
-            panel.setFrame(frame, display: false)
+
+        guard animated else {
+            panel.alphaValue = 0
             panel.orderOut(nil)
+            return
         }
+
+        var frame = panel.frame
+        frame.origin.y += 20
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.14
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+            panel.animator().setFrame(frame, display: true)
+        }, completionHandler: {
+            MainActor.assumeIsolated {
+                panel.orderOut(nil)
+                panel.alphaValue = 1
+            }
+        })
     }
 
     private func scheduleHide(after seconds: TimeInterval) {
+        // Polling runs ~11 times a second; rescheduling on every tick would
+        // push the deadline out for ever.
+        guard hideWork == nil else { return }
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.hideNow() }
         hideWork = work
@@ -192,9 +206,13 @@ final class Shelf: ObservableObject {
     // MARK: - Pointer
 
     private func pointerMoved() {
+        let point = NSEvent.mouseLocation
+        if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1" {
+            NSLog("Peg tick y=%.1f shown=%d panel=%@", point.y, isShown ? 1 : 0,
+                  panel.map { NSStringFromRect($0.frame) } ?? "nil")
+        }
         guard SnipSession.shared.isActive == false else { return }
 
-        let point = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return }
 
         if !isShown {
@@ -206,7 +224,8 @@ final class Shelf: ObservableObject {
         }
 
         guard let frame = panel?.frame else { return }
-        if frame.contains(point) {
+        // Inside the line, or still resting on the very top edge above it.
+        if frame.contains(point) || point.y >= frame.maxY {
             hideWork?.cancel()
             hideWork = nil
             return

@@ -80,7 +80,8 @@ Sources/Peg/
    拖动时也没有实时采集的延迟。
 2. **所有坐标以点为单位、以左上为原点**（`isFlipped = true`），只在裁剪那一刻乘
    `image.width / screen.width` 换算成像素，避免多屏 + Retina 的经典错位。
-3. **热键走 Carbon**、**不做鼠标监听**，所以除了屏幕录制之外不需要任何权限。
+3. **热键走 Carbon**，晾图绳靠 0.09s 轮询指针位置（不用全局事件监听，也不需要辅助功能
+   权限），所以整个 app 除了屏幕录制之外不要任何授权。
 
 ## 开发
 
@@ -93,6 +94,7 @@ bash scripts/build-app.sh          # 编译 + 打包 + 签名
 PEG_DEMO=shelf  ./build/Peg.app/Contents/MacOS/Peg   # 直接展开晾图绳
 PEG_DEMO=overlay ./build/Peg.app/Contents/MacOS/Peg  # 假画面 + 预置选区，验证 UI
 PEG_DEMO=overlay PEG_DEMO_EMPTY=1 ...                # 假画面 + 未选区状态
+PEG_DEBUG=1   ./build/Peg.app/Contents/MacOS/Peg      # 打印晾图绳的指针轮询日志
 ```
 
 `PEG_DEMO=overlay` 不需要屏幕录制权限，用来调界面很方便。
