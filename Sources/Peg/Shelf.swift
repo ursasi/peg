@@ -46,6 +46,7 @@ final class Shelf {
     // MARK: - Lifetime
 
     func start() {
+        HistoryStore.purge()
         reload()
         startPointerPolling()
     }
@@ -80,7 +81,7 @@ final class Shelf {
             options: [.skipsHiddenFiles])) ?? []
 
         let recent = urls
-            .filter { $0.pathExtension.lowercased() == "png" }
+            .filter { HistoryStore.extensions.contains($0.pathExtension.lowercased()) }
             .compactMap { url -> (URL, Date)? in
                 let date = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
                 return (url, date)
@@ -107,24 +108,6 @@ final class Shelf {
         let item = ShotItem(url: url, created: Date(), thumb: thumb)
         items.insert(item, at: 0)
         if items.count > limit { items.removeLast(items.count - limit) }
-    }
-
-    private func recognize(_ item: ShotItem) {
-        guard let image = NSImage(contentsOf: item.url)?
-            .cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
-        let screen = Displays.underMouse() ?? NSScreen.main
-        Task { @MainActor in
-            guard let text = await OCREngine.recognize(image), let screen else {
-                NSSound.beep()
-                return
-            }
-            Clip.copy(text)
-            var near = CGRect(x: 240, y: 240, width: 300, height: 120)
-            if let frame = panel?.frame {
-                near = CGRect(x: frame.minX + 20, y: frame.minY, width: 300, height: 120)
-            }
-            OCRPanel.shared.show(text: text, near: near, on: screen)
-        }
     }
 
     private func saveToDesktop(_ item: ShotItem) {
@@ -245,7 +228,6 @@ final class Shelf {
         content.onPin = { item in
             PinController.shared.pinFile(at: item.url)
         }
-        content.onOCR = { [weak self] item in self?.recognize(item) }
         content.setItems(items)
         self.content = content
         panel.contentView = content

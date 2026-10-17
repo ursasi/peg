@@ -190,17 +190,6 @@ enum ScrollSelfTest {
             check("white test image", false)
         }
 
-        // OCR: render text, then read it back with Vision.
-        print("ocr")
-        if let textImage = OCRSample.image("PEG OCR 123") {
-            let recognised = OCREngine.recognizeSync(textImage) ?? ""
-            check("ocr reads rendered text",
-                  recognised.uppercased().contains("PEG") && recognised.contains("123"),
-                  "got \(recognised)")
-        } else {
-            check("ocr test image", false)
-        }
-
         print(failures == 0 ? "all good" : "\(failures) failed")
         return failures == 0 ? 0 : 1
     }

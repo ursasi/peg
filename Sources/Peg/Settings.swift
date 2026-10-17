@@ -64,6 +64,16 @@ enum Prefs {
         set { UserDefaults.standard.set(newValue, forKey: "saveQuality") }
     }
 
+    /// Days to keep shots on disk; 0 means keep everything.
+    static var historyDays: Int {
+        get {
+            UserDefaults.standard.object(forKey: "historyDays") == nil
+                ? 30
+                : UserDefaults.standard.integer(forKey: "historyDays")
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "historyDays") }
+    }
+
     /// Copy every snip to the clipboard without being asked.
     static var autoCopy: Bool {
         get { UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true }
@@ -85,9 +95,10 @@ final class SettingsWindow: NSWindowController {
     private let qualitySlider = NSSlider(value: Prefs.quality, minValue: 0.5, maxValue: 1, target: nil, action: nil)
     private let qualityLabel = NSTextField(labelWithString: "")
     private let copyCheck = NSButton(checkboxWithTitle: "截图后自动复制到剪贴板", target: nil, action: nil)
+    private let retentionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
@@ -153,6 +164,19 @@ final class SettingsWindow: NSWindowController {
         qualityRow.orientation = .horizontal
         qualityRow.spacing = 10
 
+        // History retention.
+        let historyTitle = NSTextField(labelWithString: "历史保留")
+        historyTitle.font = .systemFont(ofSize: 12, weight: .semibold)
+        retentionPopup.addItems(withTitles: ["7 天", "30 天", "90 天", "永久保留"])
+        retentionPopup.target = self
+        retentionPopup.action = #selector(retentionChanged)
+        let retentionRow = NSStackView(views: [retentionPopup,
+                                               NSTextField(labelWithString: "之后的截图会自动移到废纸篓")])
+        retentionRow.orientation = .horizontal
+        retentionRow.spacing = 10
+        (retentionRow.arrangedSubviews[1] as? NSTextField)?.textColor = .secondaryLabelColor
+        (retentionRow.arrangedSubviews[1] as? NSTextField)?.font = .systemFont(ofSize: 11)
+
         // Clipboard.
         let clipTitle = NSTextField(labelWithString: "剪贴板")
         clipTitle.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -166,7 +190,7 @@ final class SettingsWindow: NSWindowController {
         note.textColor = .secondaryLabelColor
 
         for view in [folderTitle, folderRow, formatTitle, formatControl, qualityRow,
-                     clipTitle, copyCheck, note] {
+                     historyTitle, retentionRow, clipTitle, copyCheck, note] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
@@ -180,6 +204,8 @@ final class SettingsWindow: NSWindowController {
         qualitySlider.doubleValue = Prefs.quality
         qualityLabel.stringValue = "\(Int((Prefs.quality * 100).rounded()))%"
         qualityRow.isHidden = Prefs.format != .jpeg
+        let days = Prefs.historyDays
+        retentionPopup.selectItem(at: days == 0 ? 3 : days <= 7 ? 0 : days <= 30 ? 1 : 2)
         copyCheck.state = Prefs.autoCopy ? .on : .off
     }
 
@@ -208,6 +234,12 @@ final class SettingsWindow: NSWindowController {
     @objc private func qualityChanged() {
         Prefs.quality = qualitySlider.doubleValue
         qualityLabel.stringValue = "\(Int((Prefs.quality * 100).rounded()))%"
+    }
+
+    @objc private func retentionChanged() {
+        let values = [7, 30, 90, 0]
+        Prefs.historyDays = values[max(0, min(3, retentionPopup.indexOfSelectedItem))]
+        _ = HistoryStore.purge()
     }
 
     @objc private func copyChanged() {

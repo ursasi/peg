@@ -24,6 +24,12 @@ final class SnipSession {
     private var anchor: CGPoint?
     private var current: CGPoint?
 
+    /// The window under the pointer before any selection exists, and the point
+    /// where it was clicked (a real drag turns that click into a free rectangle).
+    private var hoverScreen: NSScreen?
+    private(set) var windowHover: CGRect?
+    private var windowClick: CGPoint?
+
     // MARK: - Start / stop
 
     /// The snip hotkey does double duty: while a scroll capture is running it
@@ -128,6 +134,9 @@ final class SnipSession {
         activeScreen = nil
         anchor = nil
         current = nil
+        hoverScreen = nil
+        windowHover = nil
+        windowClick = nil
         isActive = false
         NSCursor.arrow.set()
     }
@@ -152,7 +161,31 @@ final class SnipSession {
 
     // MARK: - Mouse
 
+    /// Called on every pointer move while nothing is selected yet.
+    func updateHover(on screen: NSScreen, at point: CGPoint) {
+        guard anchor == nil else { return }
+        let rect = WindowFinder.windowRect(atLocalPoint: point, on: screen)
+        if hoverScreen !== screen || rect != windowHover {
+            hoverScreen = screen
+            windowHover = rect
+            redraw()
+        }
+    }
+
     func mouseDown(on screen: NSScreen, at point: CGPoint) {
+        if anchor == nil, let rect = windowHover, rect.contains(point) {
+            // One click grabs the whole window; dragging from here still makes
+            // a free selection instead.
+            activeScreen = screen
+            anchor = CGPoint(x: rect.minX, y: rect.minY)
+            current = CGPoint(x: rect.maxX, y: rect.maxY)
+            windowClick = point
+            hoverScreen = nil
+            windowHover = nil
+            redraw()
+            return
+        }
+        windowClick = nil
         activeScreen = screen
         anchor = point
         current = point
@@ -161,12 +194,23 @@ final class SnipSession {
 
     func mouseDragged(on screen: NSScreen, at point: CGPoint) {
         guard activeScreen === screen, anchor != nil else { return }
+        if let origin = windowClick {
+            // Moved far enough to mean "I want to drag a rectangle myself".
+            guard hypot(point.x - origin.x, point.y - origin.y) > 4 else { return }
+            windowClick = nil
+            anchor = origin
+        }
         current = point
         redraw()
     }
 
     func mouseUp(on screen: NSScreen, at point: CGPoint) {
         guard activeScreen === screen, anchor != nil else { return }
+        if windowClick != nil {
+            windowClick = nil
+            redraw()
+            return
+        }
         current = point
         redraw()
     }
@@ -189,9 +233,6 @@ final class SnipSession {
             return true
         case 49: // space: annotate before committing
             openEditor()
-            return true
-        case 17: // t: read the text in the selection
-            recognizeText()
             return true
         case 35: // p
             commit(.pin)
@@ -228,23 +269,6 @@ final class SnipSession {
         let screen = cropped.screen
         dismiss()
         AnnotationEditor.shared.present(image: cropped.image, on: screen)
-    }
-
-    private func recognizeText() {
-        guard let cropped = cropSelection() else { return }
-        let screen = cropped.screen
-        let rect = cropped.onScreen
-        dismiss()
-        Shelf.shared.hideNow(animated: false)
-
-        Task { @MainActor in
-            guard let text = await OCREngine.recognize(cropped.image) else {
-                NSSound.beep()
-                return
-            }
-            Clip.copy(text)
-            OCRPanel.shared.show(text: text, near: rect, on: screen)
-        }
     }
 
     private func cropSelection() -> (image: CGImage, screen: NSScreen, onScreen: CGRect)? {

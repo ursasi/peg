@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var snipHotKey: HotKey?
     private var shelfHotKey: HotKey?
     private var pastePinHotKey: HotKey?
+    private var historyHotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
@@ -21,20 +22,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "shelf":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated { Shelf.shared.reveal(autoHideAfter: 30) }
-            }
-        case "ocr":
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                MainActor.assumeIsolated {
-                    guard let screen = NSScreen.main,
-                          let image = OCRSample.image("PEG OCR 123") else { return }
-                    Task { @MainActor in
-                        guard let text = await OCREngine.recognize(image) else { return }
-                        Clip.copy(text)
-                        OCRPanel.shared.show(text: text,
-                                             near: CGRect(x: 240, y: 240, width: 300, height: 120),
-                                             on: screen)
-                    }
-                }
             }
         case "annotate":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -74,6 +61,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { Shelf.shared.toggle() }
         }
 
+        historyHotKey = HotKey(.history) {
+            MainActor.assumeIsolated { HistoryWindow.shared.show() }
+        }
+
         pastePinHotKey = HotKey(.pastePin) {
             MainActor.assumeIsolated {
                 if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
@@ -111,6 +102,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         sizeItem.submenu = sizeMenu
         menu.addItem(sizeItem)
+
+        let history = NSMenuItem(title: "截图历史", action: #selector(openHistory), keyEquivalent: "")
+        menu.addItem(history)
 
         let pastePin = NSMenuItem(title: "贴剪贴板图片", action: #selector(pastePin), keyEquivalent: "")
         menu.addItem(pastePin)
@@ -167,6 +161,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func pastePin() {
         if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
+    }
+
+    @objc private func openHistory() {
+        HistoryWindow.shared.show()
     }
 
     @objc private func openSettings() {

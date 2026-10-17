@@ -58,6 +58,7 @@ final class SelectionView: NSView {
     override func mouseMoved(with event: NSEvent) {
         takeFocus()
         cursor = convert(event.locationInWindow, from: nil)
+        session?.updateHover(on: shot.screen, at: cursor ?? .zero)
         needsDisplay = true
     }
 
@@ -129,6 +130,19 @@ final class SelectionView: NSView {
 
             drawBorder(selection)
             drawSizeLabel(for: selection)
+        } else if let hover = session?.windowHover, hover.width > 8, hover.height > 8 {
+            // Un-dim the window under the pointer and ring it: one click grabs it.
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(rect: hover).addClip()
+            frozen.draw(in: bounds)
+            NSGraphicsContext.restoreGraphicsState()
+
+            let path = NSBezierPath(roundedRect: hover.insetBy(dx: -1, dy: -1), xRadius: 3, yRadius: 3)
+            path.lineWidth = 2.5
+            accent.withAlphaComponent(0.95).setStroke()
+            path.stroke()
+            drawSizeLabel(for: hover)
+            drawCrosshair()
         } else {
             drawCrosshair()
             drawHint()

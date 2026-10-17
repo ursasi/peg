@@ -76,7 +76,6 @@ final class ShelfContentView: NSView {
     var onSaveToDesktop: ((ShotItem) -> Void)?
     var onReveal: ((ShotItem) -> Void)?
     var onTrash: ((ShotItem) -> Void)?
-    var onOCR: ((ShotItem) -> Void)?
     var onPin: ((ShotItem) -> Void)?
 
     override init(frame frameRect: NSRect) {
@@ -125,7 +124,6 @@ final class ShelfContentView: NSView {
         strip.onSaveToDesktop = { [weak self] item in self?.onSaveToDesktop?(item) }
         strip.onReveal = { [weak self] item in self?.onReveal?(item) }
         strip.onTrash = { [weak self] item in self?.onTrash?(item) }
-        strip.onOCR = { [weak self] item in self?.onOCR?(item) }
         strip.onPin = { [weak self] item in self?.onPin?(item) }
     }
 
@@ -272,7 +270,6 @@ final class ThumbStrip: NSView {
     var onSaveToDesktop: ((ShotItem) -> Void)?
     var onReveal: ((ShotItem) -> Void)?
     var onTrash: ((ShotItem) -> Void)?
-    var onOCR: ((ShotItem) -> Void)?
     var onPin: ((ShotItem) -> Void)?
 
     override var isFlipped: Bool { true }
@@ -290,7 +287,6 @@ final class ThumbStrip: NSView {
             view.onSaveToDesktop = { [weak self] in self?.onSaveToDesktop?(item) }
             view.onReveal = { [weak self] in self?.onReveal?(item) }
             view.onTrash = { [weak self] in self?.onTrash?(item) }
-            view.onOCR = { [weak self] in self?.onOCR?(item) }
             view.onPin = { [weak self] in self?.onPin?(item) }
             view.strip = self
             addSubview(view)
@@ -361,7 +357,6 @@ final class ThumbView: NSView, NSDraggingSource {
     var onSaveToDesktop: (() -> Void)?
     var onReveal: (() -> Void)?
     var onTrash: (() -> Void)?
-    var onOCR: (() -> Void)?
     var onPin: (() -> Void)?
 
     private var hovering = false {
@@ -668,7 +663,6 @@ final class ThumbView: NSView, NSDraggingSource {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: "复制") { [weak self] in self?.onCopy?() })
         menu.addItem(ClosureMenuItem(title: "贴到屏幕上") { [weak self] in self?.onPin?() })
-        menu.addItem(ClosureMenuItem(title: "识别文字") { [weak self] in self?.onOCR?() })
         menu.addItem(ClosureMenuItem(title: "用「预览」打开") { [weak self] in self?.onOpen?() })
         menu.addItem(ClosureMenuItem(title: "保存到桌面") { [weak self] in self?.onSaveToDesktop?() })
         menu.addItem(ClosureMenuItem(title: "在访达中显示") { [weak self] in self?.onReveal?() })
