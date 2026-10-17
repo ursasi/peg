@@ -124,6 +124,10 @@ final class Shelf {
 
     // MARK: - Show / hide
 
+    func debugPreview(_ index: Int) {
+        content?.debugPreview(index)
+    }
+
     func toggle() {
         if isShown { hideNow() } else { reveal() }
     }

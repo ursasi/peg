@@ -3,7 +3,9 @@ import ImageIO
 
 /// Reading the shots folder, and throwing away the ones nobody wants any more.
 enum HistoryStore {
-    static let extensions: Set<String> = ["png", "jpg", "jpeg"]
+    /// Formats the shelf and the history will show. GIF because the recorder
+    /// writes them, TIFF because plenty of apps still hand you one.
+    static let extensions: Set<String> = ["png", "jpg", "jpeg", "gif", "tif", "tiff"]
 
     static func files(in folder: URL = Prefs.folderURL) -> [URL] {
         let urls = (try? FileManager.default.contentsOfDirectory(

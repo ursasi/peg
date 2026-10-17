@@ -141,6 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "cancel": SnipSession.shared.cancel()
         case "stoprecord": Recorder.shared.stop()
+        case _ where debugCommand.hasPrefix("preview:"):
+            if let index = Int(debugCommand.dropFirst("preview:".count)) {
+                Shelf.shared.debugPreview(index)
+            }
         case _ where debugCommand.hasPrefix("key:"):
             if let code = UInt16(debugCommand.dropFirst("key:".count)) { SnipSession.shared.debugKey(code) }
         case _ where debugCommand.hasPrefix("type:"):

@@ -189,6 +189,10 @@ final class ShelfContentView: NSView {
         strip.closePreviews()
     }
 
+    func debugPreview(_ index: Int) {
+        strip.debugPreview(index)
+    }
+
     override func layout() {
         super.layout()
         let side: CGFloat = ShelfMetrics.side
@@ -332,6 +336,12 @@ final class ThumbStrip: NSView {
         }
         invalidateIntrinsicContentSize()
         needsLayout = true
+    }
+
+    /// Debug hook: show the hover preview for one sheet.
+    func debugPreview(_ index: Int) {
+        guard index >= 0, index < thumbs.count else { return }
+        thumbs[index].debugPreview()
     }
 
     func closePreviews() {
@@ -517,6 +527,8 @@ final class ThumbView: NSView, NSDraggingSource {
         previewWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
     }
+
+    func debugPreview() { showPreview() }
 
     private func showPreview() {
         guard !dragged, let window else { return }
