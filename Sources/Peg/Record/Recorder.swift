@@ -148,9 +148,11 @@ final class Recorder {
             let url = Recorder.writeGIF(captured, fps: 12)
             guard let url else { return }
             DispatchQueue.main.async {
-                Clip.copy(contentsOf: url)
-                Shelf.shared.insert(url)
-                Shelf.shared.flash()
+                MainActor.assumeIsolated {
+                    Clip.copy(contentsOf: url)
+                    Shelf.shared.insert(url)
+                    Shelf.shared.flash()
+                }
             }
         }
     }

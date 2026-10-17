@@ -66,9 +66,12 @@ final class Shelf {
     func reload() {
         let folder = Storage.folder
         let limit = self.limit
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        // `[weak self]` belongs to the inner, main-queue closure: capturing it
+        // from the background block is what Swift 5.10 rejects ("reference to
+        // captured var 'self' in concurrently-executing code").
+        DispatchQueue.global(qos: .userInitiated).async {
             let items = Shelf.scan(folder: folder, limit: limit)
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 MainActor.assumeIsolated { self?.items = items }
             }
         }
