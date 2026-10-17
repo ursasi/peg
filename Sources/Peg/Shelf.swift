@@ -27,7 +27,7 @@ final class Shelf {
     private var currentScreen: NSScreen?
     private var content: ShelfContentView?
 
-    private let height: CGFloat = 148
+    private var height: CGFloat { ShelfContentView.height }
     private let limit = 24
 
     // MARK: - Lifetime
@@ -216,7 +216,7 @@ final class Shelf {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = false

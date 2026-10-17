@@ -1,14 +1,16 @@
 import AppKit
 
-/// The line itself, in AppKit: a glass strip, a header, and a horizontally
-/// scrollable row of hanging shots. No SwiftUI, so the Command Line Tools
-/// toolchain (which ships no SwiftUI macro plugin) can build it.
+/// The clothesline: a taut line under the menu bar with the latest shots
+/// hanging from it. No background panel — only the line and the cards are
+/// drawn, so it reads as a line rather than a strip.
 final class ShelfContentView: NSView {
-    private let effect = NSVisualEffectView()
-    private let dim = NSView()
+    static let lineY: CGFloat = 30
+    static let cardHeight: CGFloat = 92
+    static let height: CGFloat = lineY + cardHeight + 12
+
     private let header = NSTextField(labelWithString: "")
-    private let hint = NSTextField(labelWithString: "⌃⌥X 截图　·　点图复制　·　双击打开　·　拖出去用　·　⌃⌥S 收起")
-    private let emptyLabel = NSTextField(labelWithString: "按 ⌃⌥X 截一张，它就挂在这儿")
+    private let hint = NSTextField(labelWithString: "")
+    private let emptyLabel = NSTextField(labelWithString: "")
     private let scroll = HorizontalScrollView()
     private let strip = ThumbStrip()
 
@@ -21,39 +23,28 @@ final class ShelfContentView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.cornerRadius = 18
-        layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-        layer?.masksToBounds = true
 
-        effect.material = .hudWindow
-        effect.blendingMode = .behindWindow
-        effect.state = .active
-        effect.autoresizingMask = [.width, .height]
-        addSubview(effect)
-
-        // The material follows whatever is behind it; without a solid tint the
-        // white-on-white case makes the shelf unreadable.
-        dim.wantsLayer = true
-        dim.layer?.backgroundColor = NSColor(calibratedWhite: 0.06, alpha: 0.82).cgColor
-        addSubview(dim)
-
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.85)
+        shadow.shadowBlurRadius = 3
+        shadow.shadowOffset = NSSize(width: 0, height: 1)
         header.attributedStringValue = NSAttributedString(
             string: "PEG",
             attributes: [
                 .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .bold),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.55),
-                .kern: 2.5
+                .foregroundColor: NSColor.white.withAlphaComponent(0.85),
+                .kern: 2.5,
+                .shadow: shadow
             ])
         addSubview(header)
 
-        hint.font = .systemFont(ofSize: 10)
-        hint.textColor = NSColor.white.withAlphaComponent(0.45)
         hint.alignment = .right
+        hint.attributedStringValue = Self.text("⌃⌥X 截图　·　点图复制　·　双击打开　·　拖出去用　·　⌃⌥S 收起",
+                                               size: 10, alpha: 0.62)
         addSubview(hint)
 
-        emptyLabel.font = .systemFont(ofSize: 12)
-        emptyLabel.textColor = NSColor.white.withAlphaComponent(0.55)
+        emptyLabel.attributedStringValue = Self.text("按 ⌃⌥X 截一张，它就挂在这根线上",
+                                                     size: 12, alpha: 0.8)
         addSubview(emptyLabel)
 
         scroll.drawsBackground = false
@@ -74,34 +65,72 @@ final class ShelfContentView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    override var isFlipped: Bool { true }
+
     func setItems(_ items: [ShotItem]) {
         strip.setItems(items)
         emptyLabel.isHidden = !items.isEmpty
         scroll.isHidden = items.isEmpty
         needsLayout = true
+        needsDisplay = true
     }
 
     override func layout() {
         super.layout()
-        let pad: CGFloat = 18
-        effect.frame = bounds
-        dim.frame = bounds
+        let side: CGFloat = 24
         header.sizeToFit()
-        header.frame.origin = NSPoint(x: pad, y: bounds.height - 22)
+        header.frame.origin = NSPoint(x: side, y: 6)
         hint.sizeToFit()
-        hint.frame.origin = NSPoint(x: bounds.width - hint.frame.width - pad,
-                                    y: bounds.height - 21)
+        hint.frame.origin = NSPoint(x: bounds.width - hint.frame.width - side, y: 7)
         emptyLabel.sizeToFit()
-        emptyLabel.frame.origin = NSPoint(x: pad, y: bounds.height - 62)
+        emptyLabel.frame.origin = NSPoint(x: side, y: Self.lineY + 34)
 
-        let stripHeight = ThumbStrip.height
-        scroll.frame = NSRect(x: pad - 2,
-                              y: 8,
-                              width: bounds.width - (pad - 2) * 2,
-                              height: stripHeight)
+        scroll.frame = NSRect(x: side - 2,
+                              y: Self.lineY + 6,
+                              width: bounds.width - (side - 2) * 2,
+                              height: Self.cardHeight - 6)
         strip.setFrameSize(NSSize(width: max(strip.intrinsicContentSize.width, scroll.frame.width),
-                                  height: stripHeight))
+                                  height: Self.cardHeight - 6))
         strip.needsLayout = true
+    }
+
+    private static func text(_ string: String, size: CGFloat, alpha: CGFloat) -> NSAttributedString {
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.9)
+        shadow.shadowBlurRadius = 4
+        shadow.shadowOffset = NSSize(width: 0, height: 1)
+        return NSAttributedString(string: string, attributes: [
+            .font: NSFont.systemFont(ofSize: size),
+            .foregroundColor: NSColor.white.withAlphaComponent(alpha),
+            .shadow: shadow
+        ])
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let side: CGFloat = 24
+        let lineY = Self.lineY
+
+        // Two passes: a dark underlay and a light top. Reads on a white page
+        // and on a dark terminal without any background panel.
+        let dark = NSBezierPath()
+        dark.move(to: NSPoint(x: side, y: lineY))
+        dark.line(to: NSPoint(x: bounds.maxX - side, y: lineY))
+        dark.lineWidth = 3
+        NSColor.black.withAlphaComponent(0.35).setStroke()
+        dark.stroke()
+
+        let light = NSBezierPath()
+        light.move(to: NSPoint(x: side, y: lineY))
+        light.line(to: NSPoint(x: bounds.maxX - side, y: lineY))
+        light.lineWidth = 1.2
+        NSColor.white.withAlphaComponent(0.85).setStroke()
+        light.stroke()
+
+        // Small hooks at both ends.
+        NSColor.white.withAlphaComponent(0.8).setFill()
+        for x in [side, bounds.maxX - side] {
+            NSBezierPath(ovalIn: NSRect(x: x - 2.5, y: lineY - 2, width: 5, height: 5)).fill()
+        }
     }
 }
 
@@ -122,10 +151,9 @@ final class HorizontalScrollView: NSScrollView {
 }
 
 final class ThumbStrip: NSView {
-    static let height: CGFloat = 100
-    private static let gap: CGFloat = 10
-
+    private static let gap: CGFloat = 14
     private var thumbs: [ThumbView] = []
+
     var onCopy: ((ShotItem) -> Void)?
     var onOpen: ((ShotItem) -> Void)?
     var onSaveToDesktop: ((ShotItem) -> Void)?
@@ -154,7 +182,7 @@ final class ThumbStrip: NSView {
 
     override var intrinsicContentSize: NSSize {
         let width = thumbs.reduce(0) { $0 + $1.intrinsicContentSize.width + Self.gap }
-        return NSSize(width: max(0, width - Self.gap), height: Self.height)
+        return NSSize(width: max(0, width - Self.gap), height: ShelfContentView.cardHeight - 6)
     }
 
     override func layout() {
@@ -162,7 +190,7 @@ final class ThumbStrip: NSView {
         var x: CGFloat = 0
         for thumb in thumbs {
             let size = thumb.intrinsicContentSize
-            thumb.frame = NSRect(x: x, y: Self.height - size.height - 1, width: size.width, height: size.height)
+            thumb.frame = NSRect(x: x, y: 0, width: size.width, height: size.height)
             x += size.width + Self.gap
         }
     }
@@ -194,8 +222,8 @@ final class ThumbView: NSView, NSDraggingSource {
     override var isFlipped: Bool { true }
 
     override var intrinsicContentSize: NSSize {
-        let maxWidth: CGFloat = 240
-        let maxHeight: CGFloat = 96
+        let maxWidth: CGFloat = 230
+        let maxHeight: CGFloat = 80
         let imageSize = item.thumb.size
         guard imageSize.width > 0, imageSize.height > 0 else {
             return NSSize(width: maxWidth, height: maxHeight)
@@ -207,7 +235,7 @@ final class ThumbView: NSView, NSDraggingSource {
             width = maxWidth
             height = width / aspect
         }
-        return NSSize(width: max(48, width), height: max(32, height))
+        return NSSize(width: max(46, width), height: max(28, height))
     }
 
     override func updateTrackingAreas() {
@@ -223,30 +251,50 @@ final class ThumbView: NSView, NSDraggingSource {
         addCursorRect(bounds, cursor: .pointingHand)
     }
 
-    override func mouseEntered(with event: NSEvent) {
-        hovering = true
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        hovering = false
-    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
 
     override func draw(_ dirtyRect: NSRect) {
-        let inset: CGFloat = hovering ? 0.5 : 2.5
-        let rect = bounds.insetBy(dx: inset, dy: inset)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
+        let inset: CGFloat = hovering ? 0.5 : 1.5
+        let card = bounds.insetBy(dx: inset, dy: inset)
+
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.65)
+        shadow.shadowBlurRadius = hovering ? 14 : 7
+        shadow.shadowOffset = NSSize(width: 0, height: hovering ? 5 : 3)
+        shadow.set()
+
+        let path = NSBezierPath(roundedRect: card, xRadius: 7, yRadius: 7)
+        NSColor.black.withAlphaComponent(0.35).setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
 
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
         NSGraphicsContext.current?.imageInterpolation = .high
-        NSColor.black.withAlphaComponent(0.35).setFill()
-        rect.fill()
-        item.thumb.draw(in: rect)
+        item.thumb.draw(in: card)
         NSGraphicsContext.restoreGraphicsState()
 
-        (hovering ? NSColor.white.withAlphaComponent(0.55) : NSColor.white.withAlphaComponent(0.14)).setStroke()
+        (hovering ? NSColor.white.withAlphaComponent(0.85) : NSColor.white.withAlphaComponent(0.28)).setStroke()
         path.lineWidth = 1
         path.stroke()
+
+        drawClip(at: card)
+    }
+
+    /// A little peg where the card meets the line.
+    private func drawClip(at card: CGRect) {
+        let width: CGFloat = 9
+        let height: CGFloat = 13
+        let peg = CGRect(x: card.midX - width / 2, y: card.minY - height * 0.55,
+                         width: width, height: height)
+        NSColor(calibratedWhite: 0.9, alpha: 0.92).setFill()
+        NSBezierPath(roundedRect: peg, xRadius: 2.5, yRadius: 2.5).fill()
+        NSColor.black.withAlphaComponent(0.25).setStroke()
+        let outline = NSBezierPath(roundedRect: peg, xRadius: 2.5, yRadius: 2.5)
+        outline.lineWidth = 0.5
+        outline.stroke()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -277,8 +325,8 @@ final class ThumbView: NSView, NSDraggingSource {
     override func rightMouseDown(with event: NSEvent) {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: "复制") { [weak self] in self?.onCopy?() })
-        menu.addItem(ClosureMenuItem(title: "用「预览」打开") { [weak self] in self?.onOpen?() })
         menu.addItem(ClosureMenuItem(title: "识别文字") { [weak self] in self?.onOCR?() })
+        menu.addItem(ClosureMenuItem(title: "用「预览」打开") { [weak self] in self?.onOpen?() })
         menu.addItem(ClosureMenuItem(title: "保存到桌面") { [weak self] in self?.onSaveToDesktop?() })
         menu.addItem(ClosureMenuItem(title: "在访达中显示") { [weak self] in self?.onReveal?() })
         menu.addItem(.separator())
