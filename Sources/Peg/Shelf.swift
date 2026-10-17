@@ -28,6 +28,19 @@ final class Shelf {
     private var content: ShelfContentView?
 
     private var height: CGFloat { ShelfContentView.height }
+
+    static var lineSize: LineSize {
+        get { ShelfMetrics.lineSize }
+        set { ShelfMetrics.lineSize = newValue }
+    }
+
+    func setSize(_ size: LineSize) {
+        ShelfMetrics.lineSize = size
+        content?.setItems(items)
+        if isShown, let screen = currentScreen {
+            reveal(on: screen)
+        }
+    }
     private let limit = 24
 
     // MARK: - Lifetime
@@ -171,6 +184,7 @@ final class Shelf {
     func hideNow(animated: Bool = true) {
         hideWork?.cancel()
         hideWork = nil
+        PreviewPanel.shared.hide()
         guard let panel, isShown else { return }
         isShown = false
 

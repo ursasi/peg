@@ -89,6 +89,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        let sizeItem = NSMenuItem(title: "晾图绳大小", action: nil, keyEquivalent: "")
+        let sizeMenu = NSMenu()
+        for (index, size) in LineSize.allCases.enumerated() {
+            let entry = NSMenuItem(title: size.title, action: #selector(setLineSize(_:)), keyEquivalent: "")
+            entry.target = self
+            entry.tag = index
+            entry.state = Shelf.lineSize == size ? .on : .off
+            sizeMenu.addItem(entry)
+        }
+        sizeItem.submenu = sizeMenu
+        menu.addItem(sizeItem)
+
         let openFolder = NSMenuItem(title: "打开图片文件夹", action: #selector(openFolder), keyEquivalent: "")
         openFolder.target = self
         menu.addItem(openFolder)
@@ -125,6 +137,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleShelf() {
         Shelf.shared.toggle()
+    }
+
+    @objc private func setLineSize(_ sender: NSMenuItem) {
+        let sizes = LineSize.allCases
+        guard sender.tag >= 0, sender.tag < sizes.count else { return }
+        Shelf.shared.setSize(sizes[sender.tag])
+        for item in sender.menu?.items ?? [] {
+            item.state = item.tag == sender.tag ? .on : .off
+        }
     }
 
     @objc private func openFolder() {

@@ -1,15 +1,53 @@
 import AppKit
 
+/// Sizes for the line, from the menu bar.
+enum LineSize: String, CaseIterable {
+    case small, medium, large
+
+    var scale: CGFloat {
+        switch self {
+        case .small: return 0.8
+        case .medium: return 1
+        case .large: return 1.35
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .small: return "小"
+        case .medium: return "中"
+        case .large: return "大"
+        }
+    }
+}
+
+enum ShelfMetrics {
+    /// Small / medium / large, remembered between launches.
+    static var lineSize: LineSize {
+        get { LineSize(rawValue: UserDefaults.standard.string(forKey: "lineSize") ?? "") ?? .medium }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "lineSize") }
+    }
+
+    static var scale: CGFloat { lineSize.scale }
+    static var cardMaxHeight: CGFloat { (76 * scale).rounded() }
+    static var cardMaxWidth: CGFloat { (210 * scale).rounded() }
+    static var pegHeight: CGFloat { (15 * scale).rounded() }
+    static var inset: CGFloat { max(3, (5 * scale).rounded()) }
+    static var gap: CGFloat { (26 * scale).rounded() }
+    static var side: CGFloat { (26 * scale).rounded() }
+}
+
 /// The clothesline: a rope that sags under the menu bar with shots pegged to
 /// it. The look follows Tendedero's rope: a parabola, a dark pass for the
 /// shadow, a mid-grey core and a faint highlight, fading out at both ends.
 final class ShelfContentView: NSView {
     static let ropeTop: CGFloat = 22
-
     static var ropeSag: (CGFloat) -> CGFloat = { width in min(30, width * 0.018) }
 
-    /// Panel height: rope + sag + peg + card + a little air.
-    static let height: CGFloat = ropeTop + 26 + 18 + 92 + 10
+    static var height: CGFloat {
+        ropeTop + 30 + ShelfMetrics.pegHeight + ShelfMetrics.cardMaxHeight
+            + ShelfMetrics.inset * 2 + 10
+    }
 
     static func ropeY(x: CGFloat, width: CGFloat) -> CGFloat {
         guard width > 0 else { return ropeTop }
@@ -17,7 +55,6 @@ final class ShelfContentView: NSView {
         return ropeTop + 4 * ropeSag(width) * f * (1 - f)
     }
 
-    /// Radians, for tilting a card so it hangs perpendicular to the rope.
     static func ropeSlope(x: CGFloat, width: CGFloat) -> CGFloat {
         guard width > 0 else { return 0 }
         let f = min(1, max(0, x / width))
@@ -55,7 +92,7 @@ final class ShelfContentView: NSView {
         addSubview(header)
 
         hint.alignment = .right
-        hint.attributedStringValue = Self.text("⌃⌥X 截图　·　点图复制　·　双击打开　·　拖出去用　·　⌃⌥S 收起",
+        hint.attributedStringValue = Self.text("⌃⌥X 截图　·　点图复制　·　悬浮预览　·　拖出去用　·　⌃⌥S 收起",
                                                size: 10, alpha: 0.6)
         addSubview(hint)
 
@@ -68,6 +105,7 @@ final class ShelfContentView: NSView {
         scroll.hasVerticalScroller = false
         scroll.horizontalScrollElasticity = .allowed
         scroll.documentView = strip
+        scroll.onScroll = { [weak self] in self?.previewClosed() }
         addSubview(scroll)
 
         let rope = RopeView(frame: bounds)
@@ -94,11 +132,25 @@ final class ShelfContentView: NSView {
         scroll.isHidden = items.isEmpty
         needsLayout = true
         needsDisplay = true
+        DispatchQueue.main.async { [weak self] in self?.scrollToNewest() }
+    }
+
+    private func scrollToNewest() {
+        guard !strip.isHidden else { return }
+        let clip = scroll.contentView
+        let maxX = max(0, strip.frame.width - clip.bounds.width)
+        guard maxX > 0 else { return }
+        clip.scroll(to: NSPoint(x: maxX, y: 0))
+        scroll.reflectScrolledClipView(clip)
+    }
+
+    private func previewClosed() {
+        strip.closePreviews()
     }
 
     override func layout() {
         super.layout()
-        let side: CGFloat = 26
+        let side: CGFloat = ShelfMetrics.side
         header.sizeToFit()
         header.frame.origin = NSPoint(x: side, y: 4)
         hint.sizeToFit()
@@ -125,7 +177,6 @@ final class ShelfContentView: NSView {
             .shadow: shadow
         ])
     }
-
 }
 
 /// The rope itself, drawn above the cards so nothing can cover it.
@@ -139,7 +190,7 @@ final class RopeView: NSView {
         guard width > 0 else { return }
         let startX: CGFloat = -24
         let endX = width + 24
-        let steps = 320
+        let steps = 200
         let fadeSpan: CGFloat = 0.07
 
         var previous = NSPoint(x: startX, y: ShelfContentView.ropeY(x: startX, width: width))
@@ -153,44 +204,44 @@ final class RopeView: NSView {
         }
     }
 
-    /// One segment of the rope: shadow-bearing core plus a highlight above it.
+    /// One segment: dark underlay for the shadow, mid grey core, white highlight.
     private func stroke(from: NSPoint, to: NSPoint, alpha: CGFloat) {
         guard alpha > 0.01 else { return }
 
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.4 * alpha)
         shadow.shadowBlurRadius = 2.5
-        shadow.shadowOffset = NSSize(width: 0, height: 1.4)
+        shadow.shadowOffset = NSSize(width: 0, height: 1.5)
         shadow.set()
 
         let core = NSBezierPath()
         core.move(to: from)
         core.line(to: to)
-        core.lineWidth = 1.3
-        core.lineWidth = 2.6
+        core.lineWidth = 2.8
         NSColor.black.withAlphaComponent(0.30 * alpha).setStroke()
         core.stroke()
 
-        core.lineWidth = 1.9
+        NSShadow().set()
+
+        core.lineWidth = 2.0
         NSColor(white: 0.58, alpha: 0.95 * alpha).setStroke()
         core.stroke()
-
-        NSShadow().set()
 
         let highlight = NSBezierPath()
         highlight.move(to: NSPoint(x: from.x, y: from.y - 0.7))
         highlight.line(to: NSPoint(x: to.x, y: to.y - 0.7))
         highlight.lineWidth = 0.6
-        NSColor.white.withAlphaComponent(0.65 * alpha).setStroke()
+        NSColor.white.withAlphaComponent(0.6 * alpha).setStroke()
         highlight.stroke()
-
-
     }
 }
 
 /// Vertical wheel scrolls the shelf sideways, which is what a plain mouse has.
 final class HorizontalScrollView: NSScrollView {
+    var onScroll: (() -> Void)?
+
     override func scrollWheel(with event: NSEvent) {
+        onScroll?()
         if abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) {
             let clip = contentView
             let maxX = max(0, (documentView?.frame.width ?? 0) - clip.bounds.width)
@@ -205,8 +256,6 @@ final class HorizontalScrollView: NSScrollView {
 }
 
 final class ThumbStrip: NSView {
-    private static let gap: CGFloat = 26
-
     weak var host: NSView?
     private var thumbs: [ThumbView] = []
 
@@ -222,7 +271,10 @@ final class ThumbStrip: NSView {
     func setItems(_ items: [ShotItem]) {
         let previous = Set(thumbs.map { $0.item.url })
         thumbs.forEach { $0.removeFromSuperview() }
-        thumbs = items.map { item in
+
+        // Oldest on the left, newest on the right, so the new one lands at the
+        // end of the line and older ones scroll in from the left.
+        thumbs = items.reversed().map { item in
             let view = ThumbView(item: item)
             view.onCopy = { [weak self] in self?.onCopy?(item) }
             view.onOpen = { [weak self] in self?.onOpen?(item) }
@@ -230,6 +282,7 @@ final class ThumbStrip: NSView {
             view.onReveal = { [weak self] in self?.onReveal?(item) }
             view.onTrash = { [weak self] in self?.onTrash?(item) }
             view.onOCR = { [weak self] in self?.onOCR?(item) }
+            view.strip = self
             addSubview(view)
             if !previous.isEmpty, !previous.contains(item.url) {
                 view.dropIn()
@@ -240,24 +293,37 @@ final class ThumbStrip: NSView {
         needsLayout = true
     }
 
+    func closePreviews() {
+        PreviewPanel.shared.hide()
+        thumbs.forEach { $0.cancelPreview() }
+    }
+
     override var intrinsicContentSize: NSSize {
-        let width = thumbs.reduce(0) { $0 + $1.intrinsicContentSize.width + Self.gap }
-        return NSSize(width: max(0, width - Self.gap + 52), height: ShelfContentView.height)
+        let widths = thumbs.reduce(0) { $0 + $1.intrinsicContentSize.width + ShelfMetrics.gap }
+        return NSSize(width: max(0, widths - ShelfMetrics.gap + ShelfMetrics.side * 2),
+                      height: ShelfContentView.height)
     }
 
     override func layout() {
         super.layout()
-        let total = intrinsicContentSize.width
-        var x = max(26, (bounds.width - (intrinsicContentSize.width - 52)) / 2)
-        x = max(26, x)
+        guard !thumbs.isEmpty else { return }
+        let visible = superview?.bounds.width ?? bounds.width
+        let originInHost = host.map { convert(NSPoint.zero, to: $0) } ?? .zero
+
+        let total = thumbs.reduce(0) { $0 + $1.intrinsicContentSize.width } 
+            + ShelfMetrics.gap * CGFloat(max(0, thumbs.count - 1))
+        var x = total + ShelfMetrics.side * 2 <= visible
+            ? (visible - total) / 2
+            : ShelfMetrics.side
         for thumb in thumbs {
             let size = thumb.intrinsicContentSize
-            let ropeX = x + size.width / 2
-            let ropeY = ShelfContentView.ropeY(x: ropeX, width: bounds.width)
-            let slope = atan(ShelfContentView.ropeSlope(x: ropeX, width: bounds.width))
+            let ropeX = originInHost.x + x + size.width / 2
+            let ropeY = ShelfContentView.ropeY(x: ropeX, width: visible)
+            let slope = atan(ShelfContentView.ropeSlope(x: ropeX, width: visible))
+            thumb.frame = NSRect(x: x, y: ropeY - ShelfMetrics.pegHeight,
+                                 width: size.width, height: size.height)
             thumb.tilt = slope + thumb.item.tilt
-            thumb.frame = NSRect(x: x, y: ropeY - ThumbView.pegHeight, width: size.width, height: size.height)
-            x += size.width + Self.gap
+            x += size.width + ShelfMetrics.gap
         }
     }
 }
@@ -265,9 +331,9 @@ final class ThumbStrip: NSView {
 extension ShotItem {
     /// A small, stable tilt so the line looks casually hung rather than laid out.
     var tilt: CGFloat {
-        var hash: UInt64 = 1469598103934665603
+        var hash: UInt64 = 14_695_981_039_346_656_037
         for byte in url.lastPathComponent.utf8 {
-            hash = (hash ^ UInt64(byte)) &* 1099511628211
+            hash = (hash ^ UInt64(byte)) &* 1_099_511_628_211
         }
         let unit = CGFloat(hash % 1000) / 1000 - 0.5
         return unit * 0.055   // about ±1.6°
@@ -275,11 +341,10 @@ extension ShotItem {
 }
 
 final class ThumbView: NSView, NSDraggingSource {
-    static let pegHeight: CGFloat = 15
-    static let frameInset: CGFloat = 5
-
     let item: ShotItem
+    weak var strip: ThumbStrip?
     var tilt: CGFloat = 0 { didSet { needsDisplay = true } }
+
     var onCopy: (() -> Void)?
     var onOpen: (() -> Void)?
     var onSaveToDesktop: (() -> Void)?
@@ -295,25 +360,11 @@ final class ThumbView: NSView, NSDraggingSource {
         didSet { needsDisplay = true }
     }
     private var dropTimer: Timer?
-
-    /// New shots fall onto the line.
-    func dropIn() {
-        dropTimer?.invalidate()
-        let start = Date()
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
-            let progress = min(1, Date().timeIntervalSince(start) / 0.42)
-            let remaining = (1 - progress) * (1 - progress)
-            self.dropOffset = -46 * remaining
-            if progress >= 1 {
-                timer.invalidate()
-                self.dropTimer = nil
-                self.dropOffset = 0
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        dropTimer = timer
+    private var swing: CGFloat = 0 {
+        didSet { needsDisplay = true }
     }
+    private var swingTimer: Timer?
+    private var previewWork: DispatchWorkItem?
 
     init(item: ShotItem) {
         self.item = item
@@ -327,22 +378,65 @@ final class ThumbView: NSView, NSDraggingSource {
     override var isFlipped: Bool { true }
 
     override var intrinsicContentSize: NSSize {
-        let maxWidth: CGFloat = 210
-        let maxHeight: CGFloat = 76
         let imageSize = item.thumb.size
-        guard imageSize.width > 0, imageSize.height > 0 else {
-            return NSSize(width: maxWidth, height: maxHeight + Self.pegHeight)
+        var height = ShelfMetrics.cardMaxHeight
+        var width = height
+        if imageSize.width > 0, imageSize.height > 0 {
+            let aspect = imageSize.width / imageSize.height
+            width = height * aspect
+            if width > ShelfMetrics.cardMaxWidth {
+                width = ShelfMetrics.cardMaxWidth
+                height = width / aspect
+            }
         }
-        let aspect = imageSize.width / imageSize.height
-        var height = maxHeight
-        var width = height * aspect
-        if width > maxWidth {
-            width = maxWidth
-            height = width / aspect
-        }
-        return NSSize(width: max(44, width) + Self.frameInset * 2,
-                      height: max(26, height) + Self.frameInset * 2 + Self.pegHeight)
+        return NSSize(width: max(44, width) + ShelfMetrics.inset * 2,
+                      height: max(26, height) + ShelfMetrics.inset * 2 + ShelfMetrics.pegHeight)
     }
+
+    // MARK: - Motion
+
+    /// New shots fall onto the line and swing once they land.
+    func dropIn() {
+        dropTimer?.invalidate()
+        let start = Date()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let progress = min(1, Date().timeIntervalSince(start) / 0.42)
+            let remaining = (1 - progress) * (1 - progress)
+            self.dropOffset = -46 * remaining
+            if progress >= 1 {
+                timer.invalidate()
+                self.dropTimer = nil
+                self.dropOffset = 0
+                self.nudge(5)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        dropTimer = timer
+    }
+
+    /// A damped swing around the peg.
+    func nudge(_ degrees: CGFloat) {
+        swingTimer?.invalidate()
+        let amplitude = degrees * .pi / 180
+        let start = Date()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let elapsed = Date().timeIntervalSince(start)
+            if elapsed > 1.5 {
+                timer.invalidate()
+                self.swingTimer = nil
+                self.swing = 0
+                return
+            }
+            let decay = exp(-3.2 * elapsed)
+            self.swing = amplitude * decay * sin(2 * .pi * 1.7 * elapsed)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        swingTimer = timer
+    }
+
+    // MARK: - Hover
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -357,20 +451,52 @@ final class ThumbView: NSView, NSDraggingSource {
         addCursorRect(bounds, cursor: .pointingHand)
     }
 
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        nudge(2.5)
+        schedulePreview()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        cancelPreview(delay: 0.12)
+    }
+
+    func cancelPreview(delay: TimeInterval = 0) {
+        previewWork?.cancel()
+        previewWork = nil
+        PreviewPanel.shared.hide(after: delay)
+    }
+
+    private func schedulePreview() {
+        previewWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showPreview() }
+        previewWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+    }
+
+    private func showPreview() {
+        guard !dragged, let window else { return }
+        let onScreen = window.convertToScreen(convert(bounds, to: nil))
+        let screen = window.screen ?? NSScreen.main
+        guard let screen else { return }
+        let image = NSImage(contentsOf: item.url) ?? item.thumb
+        PreviewPanel.shared.show(image, near: onScreen, on: screen)
+    }
+
+    // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        let cardTop = Self.pegHeight
+        let cardTop = ShelfMetrics.pegHeight
         let card = CGRect(x: 0, y: cardTop,
                           width: bounds.width,
                           height: bounds.height - cardTop)
 
-        // Tilt around the point where the peg holds the card.
+        // Rotate around the point where the peg holds the card.
         context.saveGState()
         context.translateBy(x: card.midX, y: cardTop + dropOffset)
-        context.rotate(by: tilt)
+        context.rotate(by: tilt + swing)
         context.translateBy(x: -card.midX, y: -cardTop)
 
         drawPeg(at: CGPoint(x: card.midX, y: cardTop))
@@ -381,9 +507,10 @@ final class ThumbView: NSView, NSDraggingSource {
 
     /// A clothespin: two legs, a gap and a spring.
     private func drawPeg(at point: CGPoint) {
-        let width: CGFloat = 9
-        let height: CGFloat = 19
-        let body = CGRect(x: point.x - width / 2, y: point.y - height + 2, width: width, height: height)
+        let width = ShelfMetrics.pegHeight * 0.6
+        let height = ShelfMetrics.pegHeight + 4
+        let body = CGRect(x: point.x - width / 2, y: point.y - height + 2,
+                          width: width, height: height)
 
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
@@ -391,7 +518,7 @@ final class ThumbView: NSView, NSDraggingSource {
         shadow.shadowOffset = NSSize(width: 0, height: 1.5)
         shadow.set()
 
-        NSColor(calibratedWhite: 0.88, alpha: 1).setFill()
+        NSColor(calibratedWhite: 0.9, alpha: 1).setFill()
         let pin = NSBezierPath(roundedRect: body, xRadius: 2.5, yRadius: 2.5)
         pin.fill()
 
@@ -400,12 +527,10 @@ final class ThumbView: NSView, NSDraggingSource {
         pin.lineWidth = 0.6
         pin.stroke()
 
-        // The slit between the legs.
         NSColor(calibratedWhite: 0.55, alpha: 0.9).setFill()
         NSBezierPath(rect: CGRect(x: body.midX - 0.5, y: body.minY + 5,
                                   width: 1, height: body.height - 8)).fill()
 
-        // The spring.
         let spring = NSBezierPath(ovalIn: CGRect(x: body.midX - 2.4, y: body.minY + 7,
                                                  width: 4.8, height: 4.8))
         NSColor(calibratedWhite: 0.45, alpha: 1).setStroke()
@@ -430,7 +555,7 @@ final class ThumbView: NSView, NSDraggingSource {
 
         NSShadow().set()
 
-        let photo = frameRect.insetBy(dx: Self.frameInset, dy: Self.frameInset)
+        let photo = frameRect.insetBy(dx: ShelfMetrics.inset, dy: ShelfMetrics.inset)
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(roundedRect: photo, xRadius: 5, yRadius: 5).addClip()
         NSGraphicsContext.current?.imageInterpolation = .high
@@ -443,8 +568,11 @@ final class ThumbView: NSView, NSDraggingSource {
         border.stroke()
     }
 
+    // MARK: - Mouse
+
     override func mouseDown(with event: NSEvent) {
         dragged = false
+        cancelPreview()
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -453,11 +581,13 @@ final class ThumbView: NSView, NSDraggingSource {
             onOpen?()
         } else {
             onCopy?()
+            nudge(3)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
         dragged = true
+        cancelPreview()
         let draggingItem = NSDraggingItem(pasteboardWriter: item.url as NSURL)
         draggingItem.setDraggingFrame(bounds, contents: item.thumb)
         beginDraggingSession(with: [draggingItem], event: event, source: self)
@@ -469,6 +599,7 @@ final class ThumbView: NSView, NSDraggingSource {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        cancelPreview()
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem(title: "复制") { [weak self] in self?.onCopy?() })
         menu.addItem(ClosureMenuItem(title: "识别文字") { [weak self] in self?.onOCR?() })
