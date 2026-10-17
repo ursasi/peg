@@ -127,7 +127,13 @@ final class ShelfContentView: NSView {
         scroll.hasVerticalScroller = false
         scroll.horizontalScrollElasticity = .allowed
         scroll.documentView = strip
-        scroll.onScroll = { [weak self] in self?.previewClosed() }
+        scroll.onScroll = { [weak self] in
+            guard let self else { return }
+            self.previewClosed()
+            // Cards are hung on the rope by x, so scrolling has to re-lay them
+            // out: their height and tilt both depend on where they now sit.
+            self.strip.needsLayout = true
+        }
         addSubview(scroll)
 
         // Behind the cards: a rope is occluded by the paper hanging on it,
@@ -196,6 +202,7 @@ final class ShelfContentView: NSView {
         guard maxX > 0 else { return }
         clip.scroll(to: NSPoint(x: maxX, y: 0))
         scroll.reflectScrolledClipView(clip)
+        strip.needsLayout = true
     }
 
     private func previewClosed() {
@@ -208,6 +215,14 @@ final class ShelfContentView: NSView {
 
     func debugHover(_ index: Int) {
         strip.debugHover(index)
+    }
+
+    func debugScroll(_ x: CGFloat) {
+        let clip = scroll.contentView
+        let maxX = max(0, strip.frame.width - clip.bounds.width)
+        clip.scroll(to: NSPoint(x: min(max(0, x), maxX), y: 0))
+        scroll.reflectScrolledClipView(clip)
+        scroll.onScroll?()
     }
 
     override func layout() {

@@ -132,6 +132,10 @@ final class Shelf {
         content?.debugHover(index)
     }
 
+    func debugScroll(_ x: CGFloat) {
+        content?.debugScroll(x)
+    }
+
     func toggle() {
         if isShown { hideNow() } else { reveal() }
     }
