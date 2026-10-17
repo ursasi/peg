@@ -17,6 +17,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated { Shelf.shared.reveal(autoHideAfter: 30) }
             }
+        case "annotate":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                MainActor.assumeIsolated {
+                    let screen = NSScreen.main
+                    let size = screen?.frame.size ?? CGSize(width: 900, height: 600)
+                    let image = DemoImage.make(size: size, scale: screen?.backingScaleFactor ?? 2)
+                    AnnotationEditor.shared.present(image: image, on: screen)
+                }
+            }
         case "overlay":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated { SnipSession.shared.beginDemo() }

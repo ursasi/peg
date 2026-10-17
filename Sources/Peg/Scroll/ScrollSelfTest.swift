@@ -1,4 +1,5 @@
-import Foundation
+import AppKit
+import CoreGraphics
 
 /// Headless checks for the stitcher: build a tall synthetic document, slide a
 /// viewport over it, and make sure the matcher reports the exact movement.
@@ -130,8 +131,65 @@ enum ScrollSelfTest {
         check("stitched pixels match the document", produced == expected,
               "got \(produced.count) bytes want \(expected.count)")
 
+        // Annotation rendering: shapes are stored in image pixels and must
+        // land at the same place in the flattened bitmap.
+        print("annotations")
+        if let base = makeWhiteImage(width: 200, height: 100) {
+            var rectShape = AnnotationShape(tool: .rect, color: .systemRed, lineWidth: 6)
+            rectShape.start = CGPoint(x: 20, y: 10)
+            rectShape.end = CGPoint(x: 120, y: 60)
+
+            var textShape = AnnotationShape(tool: .text, color: .systemBlue, lineWidth: 2)
+            textShape.start = CGPoint(x: 20, y: 70)
+            textShape.text = "PEG"
+            textShape.fontSize = 20
+
+            if let flat = AnnotationRenderer.flatten(base, shapes: [rectShape, textShape]) {
+                check("flatten keeps the size", flat.width == 200 && flat.height == 100,
+                      "got \(flat.width)x\(flat.height)")
+                if let pixels = PixelSampler(flat) {
+                    let onEdge = pixels.rgb(x: 70, y: 10)
+                    let outside = pixels.rgb(x: 70, y: 2)
+                    let red = onEdge.map { $0.0 > 150 && $0.1 < 120 } ?? false
+                    let clean = outside.map { $0.0 > 200 && $0.1 > 200 && $0.2 > 200 } ?? false
+                    check("rect is drawn at the top, not mirrored", red && clean,
+                          "edge=\(String(describing: onEdge)) outside=\(String(describing: outside))")
+                    let textInk = (20..<80).contains { x in
+                        (70..<95).contains { y in
+                            (pixels.rgb(x: x, y: y)?.0 ?? 255) < 200
+                        }
+                    }
+                    check("text is drawn", textInk)
+                }
+            } else {
+                check("flatten produces an image", false)
+            }
+
+            var mosaic = AnnotationShape(tool: .mosaic, color: .white, lineWidth: 2)
+            mosaic.start = CGPoint(x: 10, y: 10)
+            mosaic.end = CGPoint(x: 190, y: 90)
+            if let flat = AnnotationRenderer.flatten(base, shapes: [mosaic]) {
+                check("mosaic keeps the size", flat.width == 200 && flat.height == 100)
+            } else {
+                check("mosaic flattens", false)
+            }
+        } else {
+            check("white test image", false)
+        }
+
         print(failures == 0 ? "all good" : "\(failures) failed")
         return failures == 0 ? 0 : 1
+    }
+
+    private static func makeWhiteImage(width: Int, height: Int) -> CGImage? {
+        guard let context = CGContext(data: nil, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
     }
 
     // MARK: - Synthetic documents

@@ -184,8 +184,11 @@ final class SnipSession {
         case 53: // esc
             cancel()
             return true
-        case 36, 76, 49: // return, enter, space
+        case 36, 76: // return, enter
             commit(.copyAndSave)
+            return true
+        case 49: // space: annotate before committing
+            openEditor()
             return true
         case 35: // p
             commit(.pin)
@@ -201,12 +204,36 @@ final class SnipSession {
     // MARK: - Commit
 
     func commit(_ finish: Finish) {
+        guard let cropped = cropSelection() else { return }
+        let onScreen = cropped.onScreen
+        dismiss()
+
+        switch finish {
+        case .copyAndSave:
+            Clip.copy(cropped.image)
+            if let url = Storage.save(cropped.image) {
+                Shelf.shared.insert(url)
+            }
+            Shelf.shared.flash()
+        case .pin:
+            PinController.shared.pin(cropped.image, at: onScreen)
+        }
+    }
+
+    private func openEditor() {
+        guard let cropped = cropSelection() else { return }
+        let screen = cropped.screen
+        dismiss()
+        AnnotationEditor.shared.present(image: cropped.image, on: screen)
+    }
+
+    private func cropSelection() -> (image: CGImage, screen: NSScreen, onScreen: CGRect)? {
         guard let screen = activeScreen,
               let rect = selection(on: screen),
               rect.width >= 3, rect.height >= 3,
               let displayID = Displays.id(of: screen),
               let shot = shots[displayID]
-        else { return }
+        else { return nil }
 
         let scale = shot.scale
         var pixelRect = CGRect(x: rect.minX * scale,
@@ -218,21 +245,9 @@ final class SnipSession {
                                                   height: CGFloat(shot.image.height)))
         guard pixelRect.width >= 1, pixelRect.height >= 1,
               let cropped = shot.image.cropping(to: pixelRect)
-        else { return }
+        else { return nil }
 
-        let onScreen = Displays.appKitRect(fromLocalTopLeft: rect, on: screen)
-        dismiss()
-
-        switch finish {
-        case .copyAndSave:
-            Clip.copy(cropped)
-            if let url = Storage.save(cropped) {
-                Shelf.shared.insert(url)
-            }
-            Shelf.shared.flash()
-        case .pin:
-            PinController.shared.pin(cropped, at: onScreen)
-        }
+        return (cropped, screen, Displays.appKitRect(fromLocalTopLeft: rect, on: screen))
     }
 
     /// Hands the current selection to the scrolling capture.
