@@ -23,6 +23,9 @@ final class SnipSession {
 
     private(set) var isActive = false
     private(set) var mode: Mode = .markup
+    /// `beginDemo` draws a fabricated screen; window lookup must stay off then,
+    /// or the overlay would outline whatever is really on the desktop.
+    private var isDemo = false
     private var windows: [SelectionWindow] = []
     private var shots: [CGDirectDisplayID: Shot] = [:]
     private var samplers: [CGDirectDisplayID: PixelSampler] = [:]
@@ -101,6 +104,7 @@ final class SnipSession {
     func beginDemo() {
         guard !isActive else { return }
         isActive = true
+        isDemo = true
         mode = .markup
         var shots: [CGDirectDisplayID: Shot] = [:]
         for ref in Displays.all {
@@ -121,7 +125,8 @@ final class SnipSession {
             current = CGPoint(x: 980, y: 760)
         }
         for window in windows {
-            (window.contentView as? SelectionView)?.demoCursor = CGPoint(x: 100, y: 906)
+            // Inside the selection, so the magnifier does not sit on the toolbar.
+            (window.contentView as? SelectionView)?.demoCursor = CGPoint(x: 1178, y: 402)
         }
 
         if ProcessInfo.processInfo.environment["PEG_DEMO_SCROLL"] == "1" {
@@ -149,7 +154,9 @@ final class SnipSession {
     }
 
     private func pollPointer() {
-        guard isActive else { return }
+        // In demo mode the pointer position is fabricated; polling the real
+        // cursor would drag the magnifier to wherever the mouse happens to be.
+        guard isActive, !isDemo else { return }
         let mouse = NSEvent.mouseLocation
         guard let screen = Displays.underMouse(),
               let window = windows.first(where: { $0.frame.contains(mouse) }),
@@ -210,6 +217,7 @@ final class SnipSession {
         draftShape = nil
         tool = nil
         mode = .markup
+        isDemo = false
         stopHoverPolling()
         isActive = false
         NSCursor.arrow.set()
@@ -237,7 +245,7 @@ final class SnipSession {
 
     /// Called on every pointer move while nothing is selected yet.
     func updateHover(on screen: NSScreen, at point: CGPoint) {
-        guard anchor == nil else { return }
+        guard anchor == nil, !isDemo else { return }
         let rect = WindowFinder.windowRect(atLocalPoint: point, on: screen)
         if rect != windowHover { DebugLog.log("hover \(point.x),\(point.y) -> \(rect.map { "\($0)" } ?? "nil")") }
         if hoverScreen !== screen || rect != windowHover {

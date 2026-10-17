@@ -19,15 +19,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DebugLog.log("launched, debug=\(DebugLog.enabled)")
         setUpDebugChannel()
 
-        // Development helpers: PEG_DEMO=shelf|snip
-        switch ProcessInfo.processInfo.environment["PEG_DEMO"] {
+        // Development helpers: PEG_DEMO=shelf|overlay|desktop|settings…
+        // Comma separated, so "desktop,shelf" shows the fake desktop with the
+        // clothesline on top — the combination the README screenshots need.
+        let demo = ProcessInfo.processInfo.environment["PEG_DEMO"] ?? ""
+        for step in demo.split(separator: ",").map(String.init) {
+            applyDemoStep(step)
+        }
+    }
+
+    private func applyDemoStep(_ step: String) {
+        switch step {
         case "settings":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 MainActor.assumeIsolated { SettingsWindow.shared.show() }
             }
         case "shelf":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                MainActor.assumeIsolated { Shelf.shared.reveal(autoHideAfter: 30) }
+                MainActor.assumeIsolated {
+                    Shelf.shared.setDemoItems(DemoContent.shelfItems())
+                    Shelf.shared.reveal(autoHideAfter: 30)
+                }
+            }
+        case "desktop":
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                MainActor.assumeIsolated { DemoContent.showDesktop() }
             }
         case "annotate":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -53,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         PinController.shared.closeAll()
+        DemoContent.cleanup()
     }
 
     private func setUpHotKeys() {

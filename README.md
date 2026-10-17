@@ -41,6 +41,32 @@ analytics, no auto-updater. Screen Recording is the only permission it asks for.
 | **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
 | **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon, and editable shortcuts. |
 
+## A closer look
+
+Everything in these screenshots is fabricated — a demo desktop, demo documents,
+demo file names — so the shots show the app and nothing else.
+
+**Frame a region or a window.** Numbers pick a tool, `⏎` commits, `P` pins, `L`
+starts a scroll capture; the magnifier reads real pixels.
+
+<p align="center">
+  <img src="docs/screen-snip.png" alt="Selection with the tool bar and magnifier" width="100%">
+</p>
+
+**The clothesline.** Recent shots hang under the menu bar with the time they
+were taken; hover for a preview, click to copy, drag anywhere.
+
+<p align="center">
+  <img src="docs/screen-shelf.png" alt="Clothesline with pegged screenshots" width="100%">
+</p>
+
+**Paste anything.** Copied text becomes a code card with line numbers and light
+syntax colouring; copied images become pins that float above other windows.
+
+<p align="center">
+  <img src="docs/screen-code.png" alt="A pinned code card" width="100%">
+</p>
+
 ## Shortcuts
 
 | Key | Action |

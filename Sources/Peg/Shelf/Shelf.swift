@@ -99,6 +99,11 @@ final class Shelf {
     }
 
     /// Puts a fresh capture at the front without re-reading the folder.
+    /// Screenshots for the README: invented shots, no files from disk.
+    func setDemoItems(_ demo: [ShotItem]) {
+        items = demo
+    }
+
     func insert(_ url: URL) {
         PinController.shared.resetHistoryCursor()
         guard !items.contains(where: { $0.url == url }) else {
