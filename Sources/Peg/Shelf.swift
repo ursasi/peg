@@ -97,6 +97,7 @@ final class Shelf {
 
     /// Puts a fresh capture at the front without re-reading the folder.
     func insert(_ url: URL) {
+        PinController.shared.resetHistoryCursor()
         guard !items.contains(where: { $0.url == url }) else {
             if let index = items.firstIndex(where: { $0.url == url }), index > 0 {
                 let item = items.remove(at: index)

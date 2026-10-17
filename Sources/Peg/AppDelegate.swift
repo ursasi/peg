@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shelfHotKey: HotKey?
     private var pastePinHotKey: HotKey?
     private var historyHotKey: HotKey?
+    private var pinOlderHotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
@@ -65,6 +66,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { HistoryWindow.shared.show() }
         }
 
+        pinOlderHotKey = HotKey(.pinOlder) {
+            MainActor.assumeIsolated {
+                if !PinController.shared.pinNextOlder() { NSSound.beep() }
+            }
+        }
+
         pastePinHotKey = HotKey(.pastePin) {
             MainActor.assumeIsolated {
                 if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
@@ -105,6 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let history = NSMenuItem(title: "截图历史", action: #selector(openHistory), keyEquivalent: "")
         menu.addItem(history)
+
+        let pinOlder = NSMenuItem(title: "贴上一张截图", action: #selector(pinOlder), keyEquivalent: "")
+        menu.addItem(pinOlder)
 
         let pastePin = NSMenuItem(title: "贴剪贴板图片", action: #selector(pastePin), keyEquivalent: "")
         menu.addItem(pastePin)
@@ -157,6 +167,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for item in sender.menu?.items ?? [] {
             item.state = item.tag == sender.tag ? .on : .off
         }
+    }
+
+    @objc private func pinOlder() {
+        if !PinController.shared.pinNextOlder() { NSSound.beep() }
     }
 
     @objc private func pastePin() {

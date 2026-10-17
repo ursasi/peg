@@ -208,11 +208,16 @@ final class SnipSession {
         guard activeScreen === screen, anchor != nil else { return }
         if windowClick != nil {
             windowClick = nil
+            current = point
             redraw()
+            if Prefs.snipImmediate { commit(.copyAndSave) }
             return
         }
         current = point
         redraw()
+        if Prefs.snipImmediate, let rect = selection(on: screen), rect.width >= 8, rect.height >= 8 {
+            commit(.copyAndSave)
+        }
     }
 
     private func redraw() {
@@ -264,11 +269,16 @@ final class SnipSession {
         }
     }
 
-    private func openEditor() {
+    private func openEditor(tool: AnnotationTool? = nil) {
         guard let cropped = cropSelection() else { return }
         let screen = cropped.screen
         dismiss()
-        AnnotationEditor.shared.present(image: cropped.image, on: screen)
+        AnnotationEditor.shared.present(image: cropped.image, on: screen, tool: tool)
+    }
+
+    /// Called by the action bar under the selection.
+    func annotate(with tool: AnnotationTool) {
+        openEditor(tool: tool)
     }
 
     private func cropSelection() -> (image: CGImage, screen: NSScreen, onScreen: CGRect)? {
@@ -295,6 +305,11 @@ final class SnipSession {
     }
 
     /// Hands the current selection to the scrolling capture.
+    /// The action bar's "L" button lands here.
+    func beginScrollFromBar() {
+        beginScroll()
+    }
+
     private func beginScroll() {
         guard let screen = activeScreen,
               let rect = selection(on: screen),

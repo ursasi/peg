@@ -76,4 +76,5 @@ struct Shortcut {
     static let shelf = Shortcut(keyCode: kVK_ANSI_S, carbonModifiers: UInt32(controlKey | optionKey))
     static let pastePin = Shortcut(keyCode: kVK_ANSI_V, carbonModifiers: UInt32(controlKey | optionKey))
     static let history = Shortcut(keyCode: kVK_ANSI_H, carbonModifiers: UInt32(controlKey | optionKey))
+    static let pinOlder = Shortcut(keyCode: kVK_ANSI_P, carbonModifiers: UInt32(controlKey | optionKey))
 }

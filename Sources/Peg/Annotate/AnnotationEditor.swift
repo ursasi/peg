@@ -12,7 +12,7 @@ final class AnnotationEditor {
 
     var isOpen: Bool { panel != nil }
 
-    func present(image: CGImage, on screen: NSScreen?) {
+    func present(image: CGImage, on screen: NSScreen?, tool: AnnotationTool? = nil) {
         close()
 
         let target = screen ?? Displays.underMouse() ?? NSScreen.main
@@ -24,7 +24,9 @@ final class AnnotationEditor {
         scale = min(scale, visible.height * 0.68 / CGFloat(image.height))
 
         let canvas = AnnotationCanvas(image: image, scale: scale)
+        if let tool { canvas.tool = tool }
         let toolbar = AnnotationToolbar()
+        toolbar.select(tool ?? canvas.tool)
         self.canvas = canvas
 
         let padding: CGFloat = 14
@@ -229,6 +231,12 @@ final class AnnotationToolbar: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Called when the editor opens from a specific tool button, so the
+    /// segmented control matches the canvas.
+    func select(_ tool: AnnotationTool) {
+        tools.selectedSegment = tool.rawValue
+    }
 
     private var actionButtons: [NSButton] = []
 

@@ -8,6 +8,9 @@ import ImageIO
 final class PinController {
     static let shared = PinController()
     private var pins: [PinWindow] = []
+    private var cascade = 0
+    private var historyCursor = 0
+    private var lastHistoryPin = Date.distantPast
 
     func pin(_ image: CGImage, at rect: CGRect) {
         let window = PinWindow(image: image, frame: rect)
@@ -27,6 +30,27 @@ final class PinController {
         return true
     }
 
+    /// Pin the next older shot on disk. Every press pins one more picture, so
+    /// holding a hotkey walks back through history instead of stacking the same
+    /// screenshot over and over.
+    @discardableResult
+    func pinNextOlder() -> Bool {
+        let files = HistoryStore.files()
+        guard !files.isEmpty else { return false }
+        if Date().timeIntervalSince(lastHistoryPin) > 12 { historyCursor = 0 }
+        let index = min(historyCursor, files.count - 1)
+        historyCursor = index + 1
+        lastHistoryPin = Date()
+        pinFile(at: files[index])
+        return true
+    }
+
+    /// A new capture starts the walk over from the newest.
+    func resetHistoryCursor() {
+        historyCursor = 0
+        lastHistoryPin = .distantPast
+    }
+
     /// Pin a file (used by the clothesline), at natural size, centred.
     func pinFile(at url: URL) {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -44,8 +68,11 @@ final class PinController {
         let factor = min(1, min(limit.width / max(1, size.width), limit.height / max(1, size.height)))
         size.width *= factor
         size.height *= factor
-        let rect = CGRect(x: visible.midX - size.width / 2,
-                          y: visible.midY - size.height / 2,
+        // Cascade so a second and third pin do not hide the one before it.
+        let step = CGFloat(cascade % 6) * 22
+        cascade += 1
+        let rect = CGRect(x: visible.midX - size.width / 2 + step,
+                          y: visible.midY - size.height / 2 - step,
                           width: size.width,
                           height: size.height)
         pin(image, at: rect)
@@ -72,6 +99,7 @@ final class PinController {
     func closeAll() {
         pins.forEach { $0.close() }
         pins.removeAll()
+        cascade = 0
     }
 }
 

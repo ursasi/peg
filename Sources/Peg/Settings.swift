@@ -74,6 +74,12 @@ enum Prefs {
         set { UserDefaults.standard.set(newValue, forKey: "historyDays") }
     }
 
+    /// Release the mouse and finish immediately, or wait for a tool / ⏎.
+    static var snipImmediate: Bool {
+        get { UserDefaults.standard.bool(forKey: "snipImmediate") }
+        set { UserDefaults.standard.set(newValue, forKey: "snipImmediate") }
+    }
+
     /// Copy every snip to the clipboard without being asked.
     static var autoCopy: Bool {
         get { UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true }
@@ -96,9 +102,10 @@ final class SettingsWindow: NSWindowController {
     private let qualityLabel = NSTextField(labelWithString: "")
     private let copyCheck = NSButton(checkboxWithTitle: "截图后自动复制到剪贴板", target: nil, action: nil)
     private let retentionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let snipBehaviour = NSPopUpButton(frame: .zero, pullsDown: false)
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 410),
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
@@ -164,6 +171,19 @@ final class SettingsWindow: NSWindowController {
         qualityRow.orientation = .horizontal
         qualityRow.spacing = 10
 
+        // What happens the moment the mouse is released.
+        let snipTitle = NSTextField(labelWithString: "框选之后")
+        snipTitle.font = .systemFont(ofSize: 12, weight: .semibold)
+        snipBehaviour.addItems(withTitles: ["停在这里，让我选标注工具", "立刻复制并保存"])
+        snipBehaviour.target = self
+        snipBehaviour.action = #selector(snipBehaviourChanged)
+        let snipRow = NSStackView(views: [snipBehaviour,
+                                          NSTextField(labelWithString: "（随时可以按 ⏎ 复制）")])
+        snipRow.orientation = .horizontal
+        snipRow.spacing = 10
+        (snipRow.arrangedSubviews[1] as? NSTextField)?.textColor = .secondaryLabelColor
+        (snipRow.arrangedSubviews[1] as? NSTextField)?.font = .systemFont(ofSize: 11)
+
         // History retention.
         let historyTitle = NSTextField(labelWithString: "历史保留")
         historyTitle.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -184,13 +204,13 @@ final class SettingsWindow: NSWindowController {
         copyCheck.action = #selector(copyChanged)
 
         let note = NSTextField(wrappingLabelWithString:
-            "快捷键：⌃⌥X 截图　⌃⌥S 晾图绳　⌃⌥V 贴剪贴板图片\n"
-            + "截图时：⏎ 复制并保存 · 空格 标注 · P 贴图 · T 取字 · L 长截图")
+            "快捷键　⌃⌥X 截图　⌃⌥P 贴上一张　⌃⌥V 贴剪贴板　⌃⌥H 历史　⌃⌥S 晾图绳\n"
+            + "截图时　⏎ 复制并保存　空格 标注　P 贴到屏幕　L 长截图")
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
 
         for view in [folderTitle, folderRow, formatTitle, formatControl, qualityRow,
-                     historyTitle, retentionRow, clipTitle, copyCheck, note] {
+                     snipTitle, snipRow, historyTitle, retentionRow, clipTitle, copyCheck, note] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
@@ -204,6 +224,7 @@ final class SettingsWindow: NSWindowController {
         qualitySlider.doubleValue = Prefs.quality
         qualityLabel.stringValue = "\(Int((Prefs.quality * 100).rounded()))%"
         qualityRow.isHidden = Prefs.format != .jpeg
+        snipBehaviour.selectItem(at: Prefs.snipImmediate ? 1 : 0)
         let days = Prefs.historyDays
         retentionPopup.selectItem(at: days == 0 ? 3 : days <= 7 ? 0 : days <= 30 ? 1 : 2)
         copyCheck.state = Prefs.autoCopy ? .on : .off
@@ -234,6 +255,10 @@ final class SettingsWindow: NSWindowController {
     @objc private func qualityChanged() {
         Prefs.quality = qualitySlider.doubleValue
         qualityLabel.stringValue = "\(Int((Prefs.quality * 100).rounded()))%"
+    }
+
+    @objc private func snipBehaviourChanged() {
+        Prefs.snipImmediate = snipBehaviour.indexOfSelectedItem == 1
     }
 
     @objc private func retentionChanged() {
