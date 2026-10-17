@@ -13,13 +13,15 @@ final class PreviewPanel {
         hideWork?.cancel()
 
         let visible = screen.visibleFrame
-        let maxWidth = visible.width * 0.62
-        let maxHeight = visible.height * 0.62
+        // Keep the preview small enough that the line above it stays visible:
+        // a sheet filling half the display reads as a stray window.
+        let maxWidth = visible.width * 0.5
+        let maxHeight = visible.height * 0.45
         let source = image.size
         guard source.width > 0, source.height > 0 else { return }
 
-        // Fit inside the allowed box, never beyond 1:1 pixels.
-        let factor = min(maxWidth / source.width, maxHeight / source.height, 1.4)
+        // Fit inside the allowed box, never enlarged past 1:1.
+        let factor = min(maxWidth / source.width, maxHeight / source.height, 1)
         let size = NSSize(width: (source.width * factor).rounded() + 12,
                           height: (source.height * factor).rounded() + 12)
 
@@ -31,7 +33,10 @@ final class PreviewPanel {
             enterFromAbove = true
         }
         origin.x = min(max(visible.minX + 12, origin.x), visible.maxX - size.width - 12)
-        origin.y = min(max(visible.minY + 12, origin.y), visible.maxY - size.height - 12)
+        // Never creep up into the line itself, or the preview covers the very
+        // sheet the pointer is on.
+        let lineBottom = visible.maxY - ShelfContentView.height
+        origin.y = min(max(visible.minY + 12, origin.y), lineBottom - size.height - 10)
         let target = CGRect(origin: origin, size: size)
 
         let panel = self.panel ?? makePanel()

@@ -128,6 +128,10 @@ final class Shelf {
         content?.debugPreview(index)
     }
 
+    func debugHover(_ index: Int) {
+        content?.debugHover(index)
+    }
+
     func toggle() {
         if isShown { hideNow() } else { reveal() }
     }

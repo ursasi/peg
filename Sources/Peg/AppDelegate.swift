@@ -141,6 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "cancel": SnipSession.shared.cancel()
         case "stoprecord": Recorder.shared.stop()
+        case _ where debugCommand.hasPrefix("hover:"):
+            if let index = Int(debugCommand.dropFirst("hover:".count)) {
+                Shelf.shared.debugHover(index)
+            }
         case _ where debugCommand.hasPrefix("preview:"):
             if let index = Int(debugCommand.dropFirst("preview:".count)) {
                 Shelf.shared.debugPreview(index)

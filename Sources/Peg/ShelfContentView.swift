@@ -84,6 +84,7 @@ final class ShelfContentView: NSView {
     private let strip = ThumbStrip()
     private var ropeView: RopeView?
     private var waveTimer: Timer?
+    private var wavePaused = false
 
     var onCopy: ((ShotItem) -> Void)?
     var onOpen: ((ShotItem) -> Void)?
@@ -159,9 +160,12 @@ final class ShelfContentView: NSView {
     /// The rope only ripples while the line is on screen.
     func startWave() {
         guard waveTimer == nil else { return }
+        // A line that slid away while the pointer was on a sheet must ripple
+        // again when it comes back.
+        wavePaused = false
         let timer = Timer(timeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
+                guard let self, !self.wavePaused else { return }
                 ShelfContentView.wavePhase += 0.06
                 self.ropeView?.needsDisplay = true
                 self.strip.needsLayout = true
@@ -174,6 +178,12 @@ final class ShelfContentView: NSView {
     func stopWave() {
         waveTimer?.invalidate()
         waveTimer = nil
+    }
+
+    /// A resting pointer needs a still line: the preview is placed once, and a
+    /// moving sheet would slide out from under it.
+    func pauseWave(_ paused: Bool) {
+        wavePaused = paused
     }
 
     private func scrollToNewest() {
@@ -191,6 +201,10 @@ final class ShelfContentView: NSView {
 
     func debugPreview(_ index: Int) {
         strip.debugPreview(index)
+    }
+
+    func debugHover(_ index: Int) {
+        strip.debugHover(index)
     }
 
     override func layout() {
@@ -303,6 +317,11 @@ final class HorizontalScrollView: NSScrollView {
 final class ThumbStrip: NSView {
     weak var host: NSView?
     private var thumbs: [ThumbView] = []
+    /// One hover target for the whole line. Each card used to schedule its own
+    /// preview, so sweeping across a few of them queued several of them and the
+    /// last one to fire was not necessarily the one under the pointer.
+    private weak var hovered: ThumbView?
+    private var previewWork: DispatchWorkItem?
 
     var onCopy: ((ShotItem) -> Void)?
     var onOpen: ((ShotItem) -> Void)?
@@ -345,8 +364,38 @@ final class ThumbStrip: NSView {
     }
 
     func closePreviews() {
+        previewWork?.cancel()
+        previewWork = nil
+        hovered = nil
         PreviewPanel.shared.hide()
-        thumbs.forEach { $0.cancelPreview() }
+    }
+
+    /// The pointer entered a card (`thumb`), or left the line (`nil`).
+    func pointer(on thumb: ThumbView?) {
+        guard hovered !== thumb else { return }
+        hovered = thumb
+        previewWork?.cancel()
+        previewWork = nil
+        (host as? ShelfContentView)?.pauseWave(thumb != nil)
+        guard let thumb else {
+            PreviewPanel.shared.hide(after: 0.14)
+            return
+        }
+        let work = DispatchWorkItem { [weak self, weak thumb] in
+            guard let self, let thumb, self.hovered === thumb else { return }
+            thumb.showPreviewNow()
+        }
+        previewWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+    }
+
+    /// Debug hook: pretend the pointer is on one card.
+    func debugHover(_ index: Int) {
+        guard index >= 0, index < thumbs.count else {
+            pointer(on: nil)
+            return
+        }
+        pointer(on: thumbs[index])
     }
 
     override var intrinsicContentSize: NSSize {
@@ -416,7 +465,6 @@ final class ThumbView: NSView, NSDraggingSource {
         didSet { needsDisplay = true }
     }
     private var swingTimer: Timer?
-    private var previewWork: DispatchWorkItem?
 
     init(item: ShotItem) {
         self.item = item
@@ -506,27 +554,19 @@ final class ThumbView: NSView, NSDraggingSource {
 
     override func mouseEntered(with event: NSEvent) {
         hovering = true
-        nudge(2.5)
-        schedulePreview()
+        strip?.pointer(on: self)
     }
 
     override func mouseExited(with event: NSEvent) {
         hovering = false
-        cancelPreview(delay: 0.12)
+        strip?.pointer(on: nil)
     }
 
     func cancelPreview(delay: TimeInterval = 0) {
-        previewWork?.cancel()
-        previewWork = nil
         PreviewPanel.shared.hide(after: delay)
     }
 
-    private func schedulePreview() {
-        previewWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.showPreview() }
-        previewWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
-    }
+    func showPreviewNow() { showPreview() }
 
     func debugPreview() { showPreview() }
 
@@ -535,7 +575,9 @@ final class ThumbView: NSView, NSDraggingSource {
         let onScreen = window.convertToScreen(convert(bounds, to: nil))
         let screen = window.screen ?? NSScreen.main
         guard let screen else { return }
-        let image = NSImage(contentsOf: item.url) ?? item.thumb
+        // Decode through ImageIO at preview size: reading a 2940px PNG at full
+        // resolution on every hover stalls the animation.
+        let image = Thumbnailer.make(item.url, maxPixel: 1600) ?? item.thumb
         PreviewPanel.shared.show(image, near: onScreen, on: screen)
     }
 
