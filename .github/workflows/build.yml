@@ -1,0 +1,20 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Scroll capture self tests
+        run: PEG_SELFTEST=1 "$(swift build --show-bin-path)/Peg"
+      - name: Assemble app bundle
+        run: bash scripts/build-app.sh
