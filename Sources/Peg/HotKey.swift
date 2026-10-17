@@ -3,10 +3,12 @@ import Carbon.HIToolbox
 
 /// A global shortcut registered through Carbon. No Accessibility permission is
 /// needed for this, unlike a CGEventTap.
-private let hotKeyEventHandler: EventHandlerUPP = { callRef, _, _ in
-    guard let callRef else { return OSStatus(eventNotHandledErr) }
+private let hotKeyEventHandler: EventHandlerUPP = { _, eventRef, _ in
+    // The first parameter is the *handler call ref*, not the event. Handing it
+    // to GetEventParameter dereferences a bogus pointer and segfaults.
+    guard let eventRef else { return OSStatus(eventNotHandledErr) }
     var hotKeyID = EventHotKeyID()
-    let err = GetEventParameter(callRef,
+    let err = GetEventParameter(eventRef,
                                 EventParamName(kEventParamDirectObject),
                                 EventParamType(typeEventHotKeyID),
                                 nil,

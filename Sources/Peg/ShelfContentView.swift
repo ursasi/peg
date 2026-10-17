@@ -33,7 +33,11 @@ enum ShelfMetrics {
     static var cardMaxWidth: CGFloat { (210 * scale).rounded() }
     static var pegHeight: CGFloat { (15 * scale).rounded() }
     static var inset: CGFloat { max(3, (5 * scale).rounded()) }
-    static var gap: CGFloat { (26 * scale).rounded() }
+    static var gap: CGFloat { (30 * scale).rounded() }
+    /// How far below the rope the top edge of the paper sits. The peg grips
+    /// across this gap, which is what makes it read as "hung" rather than
+    /// "floating in front of a line".
+    static var ropeOffset: CGFloat { (4 * scale).rounded() }
     static var side: CGFloat { (26 * scale).rounded() }
 }
 
@@ -108,9 +112,11 @@ final class ShelfContentView: NSView {
         scroll.onScroll = { [weak self] in self?.previewClosed() }
         addSubview(scroll)
 
+        // Behind the cards: a rope is occluded by the paper hanging on it,
+        // and the peg is drawn on the card so it appears to grip the line.
         let rope = RopeView(frame: bounds)
         rope.autoresizingMask = [.width, .height]
-        addSubview(rope)
+        addSubview(rope, positioned: .below, relativeTo: scroll)
 
         strip.host = self
         strip.onCopy = { [weak self] item in self?.onCopy?(item) }
@@ -320,7 +326,8 @@ final class ThumbStrip: NSView {
             let ropeX = originInHost.x + x + size.width / 2
             let ropeY = ShelfContentView.ropeY(x: ropeX, width: visible)
             let slope = atan(ShelfContentView.ropeSlope(x: ropeX, width: visible))
-            thumb.frame = NSRect(x: x, y: ropeY - ShelfMetrics.pegHeight,
+            thumb.frame = NSRect(x: x,
+                                 y: ropeY + ShelfMetrics.ropeOffset - ShelfMetrics.pegHeight,
                                  width: size.width, height: size.height)
             thumb.tilt = slope + thumb.item.tilt
             x += size.width + ShelfMetrics.gap
@@ -499,43 +506,96 @@ final class ThumbView: NSView, NSDraggingSource {
         context.rotate(by: tilt + swing)
         context.translateBy(x: -card.midX, y: -cardTop)
 
-        drawPeg(at: CGPoint(x: card.midX, y: cardTop))
+        // Paper first, peg on top: the jaws must visibly bite the sheet.
         drawFrame(card)
+        drawPeg(at: CGPoint(x: card.midX, y: cardTop))
 
         context.restoreGState()
     }
 
-    /// A clothespin: two legs, a gap and a spring.
+    /// A clothespin: a grip that widens at the top, a coil across the middle
+    /// and two jaws biting the paper. The coil sits on the rope, so the line
+    /// visibly passes *through* the peg rather than behind a floating block.
     private func drawPeg(at point: CGPoint) {
-        let width = ShelfMetrics.pegHeight * 0.6
-        let height = ShelfMetrics.pegHeight + 4
-        let body = CGRect(x: point.x - width / 2, y: point.y - height + 2,
-                          width: width, height: height)
+        let scale = ShelfMetrics.scale
+        let above = (11 * scale).rounded()
+        let below = (6 * scale).rounded()
+        let topWidth = (10 * scale).rounded()
+        let bottomWidth = (7 * scale).rounded()
+
+        let minY = point.y - above
+        let maxY = point.y + below
+        let midX = point.x.rounded()
+        let radius = min(2.5 * scale, topWidth / 2)
+
+        // Body: a trapezoid with a rounded top.
+        let body = NSBezierPath()
+        body.move(to: NSPoint(x: midX - bottomWidth / 2, y: maxY))
+        body.line(to: NSPoint(x: midX - topWidth / 2, y: minY + radius))
+        body.appendArc(withCenter: NSPoint(x: midX - topWidth / 2 + radius, y: minY + radius),
+                       radius: radius, startAngle: 180, endAngle: 270)
+        body.line(to: NSPoint(x: midX + topWidth / 2 - radius, y: minY))
+        body.appendArc(withCenter: NSPoint(x: midX + topWidth / 2 - radius, y: minY + radius),
+                       radius: radius, startAngle: 270, endAngle: 360)
+        body.line(to: NSPoint(x: midX + bottomWidth / 2, y: maxY))
+        body.close()
 
         let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.40)
         shadow.shadowBlurRadius = 3
         shadow.shadowOffset = NSSize(width: 0, height: 1.5)
         shadow.set()
-
-        NSColor(calibratedWhite: 0.9, alpha: 1).setFill()
-        let pin = NSBezierPath(roundedRect: body, xRadius: 2.5, yRadius: 2.5)
-        pin.fill()
-
+        NSColor(calibratedRed: 0.96, green: 0.94, blue: 0.89, alpha: 1).setFill()
+        body.fill()
         NSShadow().set()
-        NSColor(calibratedWhite: 0.25, alpha: 0.55).setStroke()
-        pin.lineWidth = 0.6
-        pin.stroke()
 
-        NSColor(calibratedWhite: 0.55, alpha: 0.9).setFill()
-        NSBezierPath(rect: CGRect(x: body.midX - 0.5, y: body.minY + 5,
-                                  width: 1, height: body.height - 8)).fill()
+        // A soft vertical shading so it does not read as flat paper.
+        NSGraphicsContext.saveGraphicsState()
+        body.addClip()
+        let shade = NSGradient(starting: NSColor(calibratedWhite: 1, alpha: 0.75),
+                               ending: NSColor(calibratedWhite: 0.62, alpha: 0.5))
+        shade?.draw(in: body, angle: -90)
+        NSGraphicsContext.restoreGraphicsState()
 
-        let spring = NSBezierPath(ovalIn: CGRect(x: body.midX - 2.4, y: body.minY + 7,
-                                                 width: 4.8, height: 4.8))
-        NSColor(calibratedWhite: 0.45, alpha: 1).setStroke()
-        spring.lineWidth = 1
-        spring.stroke()
+        // Jaws: the gap between the two legs, opening towards the paper.
+        let ropeY = minY + above - ShelfMetrics.ropeOffset
+        NSColor(calibratedWhite: 0.45, alpha: 0.75).setFill()
+        NSBezierPath(rect: CGRect(x: midX - 0.6 * scale, y: ropeY + 1,
+                                  width: 1.2 * scale, height: maxY - ropeY - 2)).fill()
+        let mouth = NSBezierPath()
+        mouth.move(to: NSPoint(x: midX - bottomWidth * 0.28, y: maxY))
+        mouth.line(to: NSPoint(x: midX, y: maxY - below * 0.7))
+        mouth.line(to: NSPoint(x: midX + bottomWidth * 0.28, y: maxY))
+        NSColor(calibratedWhite: 0.93, alpha: 1).setFill()
+        mouth.fill()
+
+        // Coil, wrapped around the peg right where the rope crosses.
+        let coil = CGRect(x: midX - topWidth / 2 - 0.4, y: ropeY - 1.6, width: topWidth + 0.8, height: 3.2)
+        NSColor(calibratedWhite: 0.62, alpha: 1).setFill()
+        NSBezierPath(roundedRect: coil, xRadius: 1.4, yRadius: 1.4).fill()
+        NSColor(calibratedWhite: 0.34, alpha: 0.85).setStroke()
+        for offset in [-0.8, 0.8] {
+            let wire = NSBezierPath()
+            wire.move(to: NSPoint(x: coil.minX, y: coil.midY + offset))
+            wire.line(to: NSPoint(x: coil.maxX, y: coil.midY + offset))
+            wire.lineWidth = 0.5
+            wire.stroke()
+        }
+
+        // Contact shadow on the paper, so the jaws look like they pinch it.
+        NSGraphicsContext.saveGraphicsState()
+        let jawShadow = NSShadow()
+        jawShadow.shadowColor = NSColor.black.withAlphaComponent(0.5)
+        jawShadow.shadowBlurRadius = 2
+        jawShadow.shadowOffset = NSSize(width: 0, height: 2)
+        jawShadow.set()
+        NSColor.black.withAlphaComponent(0.01).setFill()
+        NSBezierPath(rect: CGRect(x: midX - bottomWidth / 2, y: maxY - 1, width: bottomWidth, height: 1)).fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSColor(calibratedWhite: 0.28, alpha: 0.7).setStroke()
+        body.lineWidth = 0.8
+        body.stroke()
     }
 
     private func drawFrame(_ card: CGRect) {
@@ -544,7 +604,7 @@ final class ThumbView: NSView, NSDraggingSource {
 
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(hovering ? 0.5 : 0.38)
-        shadow.shadowBlurRadius = hovering ? 14 : 9
+        shadow.shadowBlurRadius = hovering ? 12 : 7
         shadow.shadowOffset = NSSize(width: 0, height: hovering ? 6 : 4)
         shadow.set()
 
