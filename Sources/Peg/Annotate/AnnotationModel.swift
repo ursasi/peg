@@ -50,6 +50,21 @@ struct AnnotationShape {
     var text: String = ""
     var fontSize: CGFloat = 0
 
+    /// Re-express a shape drawn in one coordinate system in another: used to
+    /// turn marks made on the frozen screen into marks on the cropped bitmap.
+    func transformed(scale: CGFloat, offset: CGPoint) -> AnnotationShape {
+        var copy = self
+        func map(_ point: CGPoint) -> CGPoint {
+            CGPoint(x: (point.x - offset.x) * scale, y: (point.y - offset.y) * scale)
+        }
+        copy.start = map(start)
+        copy.end = map(end)
+        copy.points = points.map(map)
+        copy.lineWidth = lineWidth * scale
+        copy.fontSize = fontSize * scale
+        return copy
+    }
+
     var rect: CGRect {
         CGRect(x: min(start.x, end.x),
                y: min(start.y, end.y),

@@ -30,6 +30,23 @@ final class SnipSession {
     private(set) var windowHover: CGRect?
     private var windowClick: CGPoint?
 
+    /// Marks made on the frozen screen, in screen points. Nothing is cropped,
+    /// copied or saved until the snip is finished — so what you paste is exactly
+    /// what you were looking at.
+    private(set) var shapes: [AnnotationShape] = []
+    private var draftShape: AnnotationShape?
+    private(set) var tool: AnnotationTool?
+    var color: NSColor = .systemRed
+    var lineWidth: CGFloat = 4
+
+    var isDrafting: Bool { draftShape != nil }
+
+    /// Drawn marks, plus the one under the pointer right now.
+    var visibleShapes: [AnnotationShape] {
+        if let draftShape { return shapes + [draftShape] }
+        return shapes
+    }
+
     // MARK: - Start / stop
 
     /// The snip hotkey does double duty: while a scroll capture is running it
@@ -137,6 +154,9 @@ final class SnipSession {
         hoverScreen = nil
         windowHover = nil
         windowClick = nil
+        shapes.removeAll()
+        draftShape = nil
+        tool = nil
         isActive = false
         NSCursor.arrow.set()
     }
@@ -170,6 +190,74 @@ final class SnipSession {
             windowHover = rect
             redraw()
         }
+    }
+
+    // MARK: - Marks
+
+    func setTool(_ newTool: AnnotationTool?) {
+        tool = newTool
+        draftShape = nil
+        redraw()
+    }
+
+    func undo() {
+        if draftShape != nil {
+            draftShape = nil
+        } else if !shapes.isEmpty {
+            shapes.removeLast()
+        }
+        redraw()
+    }
+
+    func beginShape(at point: CGPoint) {
+        guard let tool else { return }
+        var shape = AnnotationShape(tool: tool, color: color, lineWidth: lineWidth)
+        if tool == .pen || tool == .marker {
+            shape.points = [point]
+        } else {
+            shape.start = point
+            shape.end = point
+        }
+        draftShape = shape
+        redraw()
+    }
+
+    func updateShape(to point: CGPoint) {
+        guard var shape = draftShape else { return }
+        if shape.tool == .pen || shape.tool == .marker {
+            shape.points.append(point)
+        } else {
+            shape.end = point
+        }
+        draftShape = shape
+        redraw()
+    }
+
+    func endShape() {
+        guard let shape = draftShape else { return }
+        draftShape = nil
+        if !shape.isDegenerate { shapes.append(shape) }
+        redraw()
+    }
+
+    func addText(_ text: String, at point: CGPoint) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var shape = AnnotationShape(tool: .text, color: color, lineWidth: lineWidth)
+        shape.start = point
+        shape.end = point
+        shape.text = trimmed
+        shape.fontSize = 26
+        shapes.append(shape)
+        redraw()
+    }
+
+    /// Burn the marks into the cropped capture. Both the clipboard and the pin
+    /// come through here, so they can never disagree.
+    private func flatten(_ image: CGImage, selection: CGRect, scale: CGFloat) -> CGImage {
+        guard !shapes.isEmpty else { return image }
+        let marks = shapes.map { $0.transformed(scale: scale, offset: selection.origin) }
+        return AnnotationRenderer.flatten(image, shapes: marks) ?? image
     }
 
     func mouseDown(on screen: NSScreen, at point: CGPoint) {
@@ -229,15 +317,29 @@ final class SnipSession {
     // MARK: - Keyboard
 
     func keyDown(_ event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.command),
+           event.charactersIgnoringModifiers?.lowercased() == "z" {
+            undo()
+            return true
+        }
+        if let digit = Int(event.charactersIgnoringModifiers ?? ""), digit >= 1, digit <= 8,
+           let tool = AnnotationTool(rawValue: digit - 1) {
+            setTool(tool)
+            return true
+        }
         switch event.keyCode {
-        case 53: // esc
-            cancel()
+        case 53: // esc: leave the tool first, then leave the snip
+            if tool != nil {
+                setTool(nil)
+            } else {
+                cancel()
+            }
             return true
         case 36, 76: // return, enter
             commit(.copyAndSave)
             return true
-        case 49: // space: annotate before committing
-            openEditor()
+        case 49: // space: first tool, so the keyboard-only path still works
+            setTool(.rect)
             return true
         case 35: // p
             commit(.pin)
@@ -255,30 +357,21 @@ final class SnipSession {
     func commit(_ finish: Finish) {
         guard let cropped = cropSelection() else { return }
         let onScreen = cropped.onScreen
+        let flattened = flatten(cropped.image,
+                                selection: onScreen,
+                                scale: CGFloat(cropped.image.width) / max(1, onScreen.width))
         dismiss()
 
         switch finish {
         case .copyAndSave:
-            if Prefs.autoCopy { Clip.copy(cropped.image) }
-            if let url = Storage.save(cropped.image) {
+            if Prefs.autoCopy { Clip.copy(flattened) }
+            if let url = Storage.save(flattened) {
                 Shelf.shared.insert(url)
             }
             Shelf.shared.flash()
         case .pin:
-            PinController.shared.pin(cropped.image, at: onScreen)
+            PinController.shared.pin(flattened, at: onScreen)
         }
-    }
-
-    private func openEditor(tool: AnnotationTool? = nil) {
-        guard let cropped = cropSelection() else { return }
-        let screen = cropped.screen
-        dismiss()
-        AnnotationEditor.shared.present(image: cropped.image, on: screen, tool: tool)
-    }
-
-    /// Called by the action bar under the selection.
-    func annotate(with tool: AnnotationTool) {
-        openEditor(tool: tool)
     }
 
     private func cropSelection() -> (image: CGImage, screen: NSScreen, onScreen: CGRect)? {

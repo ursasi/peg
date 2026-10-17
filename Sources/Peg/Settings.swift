@@ -205,7 +205,7 @@ final class SettingsWindow: NSWindowController {
 
         let note = NSTextField(wrappingLabelWithString:
             "快捷键　⌃⌥X 截图　⌃⌥P 贴上一张　⌃⌥V 贴剪贴板　⌃⌥H 历史　⌃⌥S 晾图绳\n"
-            + "截图时　⏎ 复制并保存　空格 标注　P 贴到屏幕　L 长截图")
+            + "截图时　1–8 标注工具　⏎ 复制并保存　P 贴到屏幕　L 长截图")
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
 

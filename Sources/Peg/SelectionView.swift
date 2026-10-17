@@ -3,7 +3,7 @@ import AppKit
 /// The frozen screen plus everything that makes a snip feel direct: dimming,
 /// a live rectangle, corner handles, pixel size, and a magnifier that reads the
 /// real pixels underneath.
-final class SelectionView: NSView {
+final class SelectionView: NSView, NSTextFieldDelegate {
     let shot: Shot
     private let sampler: PixelSampler?
     weak var session: SnipSession?
@@ -18,6 +18,13 @@ final class SelectionView: NSView {
 
     private let dim = NSColor.black.withAlphaComponent(0.38)
     private let accent = NSColor.systemBlue
+
+    /// A click that hit the action bar must not also reach the selection logic
+    /// on its way up, or the release would reshuffle the rectangle.
+    private var consumedClick = false
+    private var textField: NSTextField?
+    private var textAnchor: CGPoint = .zero
+    private var previewSources: (mosaic: CGImage?, blur: CGImage?)?
 
     init(shot: Shot, sampler: PixelSampler?) {
         self.shot = shot
@@ -79,7 +86,17 @@ final class SelectionView: NSView {
 
         if let selection = session?.selection(on: shot.screen) {
             for item in barItems(for: selection) where item.rect.contains(point) {
+                consumedClick = true
                 perform(item.action)
+                return
+            }
+            if let tool = session?.tool, selection.contains(point) {
+                if tool == .text {
+                    consumedClick = true
+                    beginText(at: point)
+                } else {
+                    session?.beginShape(at: point)
+                }
                 return
             }
         }
@@ -100,6 +117,12 @@ final class SelectionView: NSView {
     override func mouseDragged(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
+        if consumedClick { return }
+        if session?.isDrafting == true {
+            session?.updateShape(to: point)
+            needsDisplay = true
+            return
+        }
         session?.mouseDragged(on: shot.screen, at: point)
         needsDisplay = true
     }
@@ -107,6 +130,15 @@ final class SelectionView: NSView {
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
+        if consumedClick {
+            consumedClick = false
+            return
+        }
+        if session?.isDrafting == true {
+            session?.endShape()
+            needsDisplay = true
+            return
+        }
         session?.mouseUp(on: shot.screen, at: point)
         needsDisplay = true
     }
@@ -118,6 +150,18 @@ final class SelectionView: NSView {
     override func keyDown(with event: NSEvent) {
         if session?.keyDown(event) == true { return }
         super.keyDown(with: event)
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        endText(commit: true)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if selector == #selector(NSResponder.cancelOperation(_:)) {
+            endText(commit: false)
+            return true
+        }
+        return false
     }
 
     // MARK: - Drawing
@@ -136,6 +180,7 @@ final class SelectionView: NSView {
             frozen.draw(in: bounds)
             NSGraphicsContext.restoreGraphicsState()
 
+            drawMarks(in: selection)
             drawBorder(selection)
             drawSizeLabel(for: selection)
             drawActionBar(for: selection)
@@ -227,6 +272,7 @@ final class SelectionView: NSView {
     /// within reach instead of hiding them behind a keystroke.
     enum BarAction: Equatable {
         case tool(AnnotationTool)
+        case undo
         case copy
         case pin
         case scroll
@@ -251,7 +297,8 @@ final class SelectionView: NSView {
         ("textformat", "文字", .tool(.text)),
         ("square.grid.3x3", "马赛克", .tool(.mosaic)),
         ("camera.filters", "模糊", .tool(.blur)),
-        ("doc.on.doc", "复制 ⏎", .copy),
+        ("arrow.uturn.backward", "撤销 ⌘Z", .undo),
+        ("checkmark", "完成 ⏎", .copy),
         ("pin", "贴到屏幕 P", .pin),
         ("arrow.up.and.down", "长截图 L", .scroll)
     ]
@@ -295,6 +342,65 @@ final class SelectionView: NSView {
                       height: first.rect.height + 10)
     }
 
+    private func drawMarks(in selection: CGRect) {
+        guard let session, !session.visibleShapes.isEmpty else { return }
+        let needsMosaic = session.visibleShapes.contains { $0.tool == .mosaic }
+        let needsBlur = session.visibleShapes.contains { $0.tool == .blur }
+        var mosaic: CGImage?
+        var blurred: CGImage?
+        if needsMosaic || needsBlur {
+            if previewSources == nil {
+                previewSources = AnnotationRenderer.previewSources(for: shot.image)
+            }
+            mosaic = needsMosaic ? previewSources?.mosaic : nil
+            blurred = needsBlur ? previewSources?.blur : nil
+        }
+
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: selection).addClip()
+        let space = DrawSpace(scale: 1, flipped: true, height: bounds.height)
+        for shape in session.visibleShapes {
+            AnnotationRenderer.draw(shape, space: space, mosaic: mosaic, blurred: blurred,
+                                    imageSize: bounds.size)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    // MARK: - Inline text
+
+    private func beginText(at point: CGPoint) {
+        endText(commit: true)
+        let size: CGFloat = 26
+        let width = min(max(80, bounds.width - point.x - 8), 420)
+        let field = NSTextField(frame: NSRect(x: point.x, y: point.y, width: width, height: size * 1.4))
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.font = .systemFont(ofSize: size, weight: .semibold)
+        field.textColor = session?.color ?? .systemRed
+        field.delegate = self
+        field.target = self
+        field.action = #selector(commitText)
+        addSubview(field)
+        textAnchor = point
+        textField = field
+        window?.makeFirstResponder(field)
+    }
+
+    @objc private func commitText() {
+        endText(commit: true)
+    }
+
+    private func endText(commit: Bool) {
+        guard let field = textField else { return }
+        let value = field.stringValue
+        textField = nil
+        field.removeFromSuperview()
+        if commit { session?.addText(value, at: textAnchor) }
+        window?.makeFirstResponder(self)
+        needsDisplay = true
+    }
+
     private func drawActionBar(for selection: CGRect) {
         guard selection.width > 24, selection.height > 24 else { return }
         let background = barBackground(for: selection)
@@ -302,7 +408,14 @@ final class SelectionView: NSView {
         NSBezierPath(roundedRect: background, xRadius: 8, yRadius: 8).fill()
 
         for (index, item) in barItems(for: selection).enumerated() {
-            if index == barHover {
+            let isActive: Bool = {
+                if case .tool(let tool) = item.action { return session?.tool == tool }
+                return false
+            }()
+            if isActive {
+                accent.withAlphaComponent(0.85).setFill()
+                NSBezierPath(roundedRect: item.rect, xRadius: 6, yRadius: 6).fill()
+            } else if index == barHover {
                 NSColor.white.withAlphaComponent(0.16).setFill()
                 NSBezierPath(roundedRect: item.rect, xRadius: 6, yRadius: 6).fill()
             }
@@ -343,7 +456,12 @@ final class SelectionView: NSView {
 
     private func perform(_ action: BarAction) {
         switch action {
-        case .tool(let tool): session?.annotate(with: tool)
+        case .tool(let tool):
+            // Clicking the active tool again returns to plain selection.
+            session?.setTool(session?.tool == tool ? nil : tool)
+            needsDisplay = true
+        case .undo:
+            session?.undo()
         case .copy: session?.commit(.copyAndSave)
         case .pin: session?.commit(.pin)
         case .scroll: session?.beginScrollFromBar()
@@ -363,7 +481,9 @@ final class SelectionView: NSView {
     }
 
     private func drawHint() {
-        let text = "拖拽选区　⏎ 复制并保存　空格 标注　P 贴到屏幕\nL 滚动长截图　Esc 取消"
+        let text = session?.tool == nil
+            ? "拖拽选区　1–8 选工具直接标注　⏎ 复制并保存　P 贴到屏幕\nL 滚动长截图　Esc 取消"
+            : "在选区内拖拽即可标注　⌘Z 撤销　Esc 回到选区"
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineSpacing = 4

@@ -172,6 +172,12 @@ enum AnnotationRenderer {
     /// Flatten the marks into a new image at native resolution. Uses an
     /// explicit bitmap so the result is the same size on any display and works
     /// without a window.
+    /// Full-size mosaic/blur sources, so the live preview can show them before
+    /// anything is committed.
+    static func previewSources(for base: CGImage) -> (mosaic: CGImage?, blur: CGImage?) {
+        (makeMosaic(base), makeBlur(base))
+    }
+
     static func flatten(_ base: CGImage, shapes: [AnnotationShape]) -> CGImage? {
         guard !shapes.isEmpty else { return base }
         let width = base.width
