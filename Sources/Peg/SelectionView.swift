@@ -184,6 +184,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
             drawBorder(selection)
             drawSizeLabel(for: selection)
             drawActionBar(for: selection)
+            if session?.tool != nil { drawHint() }
         } else if let hover = session?.windowHover, hover.width > 8, hover.height > 8 {
             // Un-dim the window under the pointer and ring it: one click grabs it.
             NSGraphicsContext.saveGraphicsState()
