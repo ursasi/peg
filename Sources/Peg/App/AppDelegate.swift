@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Shelf.shared.start()
         _ = PinController.shared
         PinController.shared.scrollMonitorInstalled()
+        ClipboardHistory.shared.start()
         DebugLog.log("launched, debug=\(DebugLog.enabled)")
         setUpDebugChannel()
 

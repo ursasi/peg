@@ -48,7 +48,7 @@ analytics, no auto-updater. Screen Recording is the only permission it asks for.
 | `⌃⌥X` | Snip and save — release the mouse and it is already copied and written to disk |
 | `⌃⌥A` | Snip and annotate — the tool bar appears under the selection |
 | `⌃⌥G` | Record a GIF — frame a region, press again to stop |
-| `⌃⌥V` | Pin the clipboard: an image as a picture, text as a card, and the newest shot on disk when the clipboard is empty |
+| `⌃⌥V` | Pin from the clipboard: press once for the newest copy, again for the one before it (images as pictures, text as a card); the newest shot on disk when nothing was copied |
 | `⌃⌥H` | Screenshot history |
 | `⌃⌥S` | Show / hide the clothesline |
 

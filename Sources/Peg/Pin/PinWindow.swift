@@ -31,6 +31,21 @@ final class PinController {
     /// clipboard holds neither we walk back through the shots on disk.
     @discardableResult
     func pinFromPasteboard() -> Bool {
+        // Walk back through recent copies; pressing twice must not stack the
+        // same picture.
+        if let entry = ClipboardHistory.shared.next() {
+            switch entry {
+            case .image(let data):
+                guard let image = NSImage(data: data) else { return false }
+                var rect = CGRect(origin: .zero, size: image.size)
+                guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+                else { return false }
+                pinCentered(cgImage, on: NSScreen.main)
+            case .text(let text):
+                pinText(text)
+            }
+            return true
+        }
         if let image = PinController.imageFromPasteboard() {
             pinCentered(image, on: NSScreen.main)
             return true
