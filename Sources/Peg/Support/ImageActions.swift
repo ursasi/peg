@@ -45,6 +45,8 @@ enum Storage {
     @discardableResult
     static func save(_ image: CGImage) -> URL? {
         let format = Prefs.format
+        // Rounded corners are transparent; JPEG would render them black.
+        let image = Rounded.flattenedForOpaqueFormats(image)
         let folder = folder
         var url = folder.appendingPathComponent("Peg \(stamp.string(from: Date())).\(format.fileExtension)")
         var counter = 2

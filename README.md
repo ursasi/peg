@@ -1,193 +1,124 @@
-# Peg
+<p align="center">
+  <img src="docs/banner.png" alt="Peg — screenshot, annotate, pin, clothesline" width="100%">
+</p>
 
-> 截图，夹在屏幕上。
+<h1 align="center">Peg</h1>
 
-macOS 菜单栏截图工具，把 Snipaste 的「截图 → 标注 → 贴图」、PixPin 的「长截图」和
-Tendedero 的「截图晾衣绳」揉进一个 app。**只为自己用**，所以没有账号、没有网络、
-没有分析、没有更新器，也没有废话。
+<p align="center">
+  A macOS screenshot tool that keeps your captures on a clothesline.
+</p>
 
-```
-⌃⌥X   截图（冻结全屏 → 鼠标停在哪就框哪个窗口 / 拖拽自选 → 松开即复制并保存）
-⌃⌥A   截图并标注（框完出现工具条：矩形/椭圆/箭头/画笔/荧光笔/文字/马赛克/模糊）
-⌃⌥G   录制 GIF（框选区域 → 开始录制 → 再按一次结束）
-⌃⌥P   贴上一张截图（连按就是一张接一张往回翻，每按一次贴一张）
-⌃⌥V   把剪贴板里的图片贴到屏幕上
-⌃⌥H   截图历史（磁盘上的全部截图）
-⌃⌥S   收起 / 放下晾图绳
-```
+<p align="center">
+  <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-blue">
+  <img alt="Swift" src="https://img.shields.io/badge/Swift-AppKit-orange">
+  <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-brightgreen">
+  <img alt="MIT" src="https://img.shields.io/badge/license-MIT-green">
+</p>
 
-## 现在能做什么（v0.1）
+<p align="center">
+  <a href="README.zh-CN.md">中文说明</a>
+</p>
 
-| 能力 | 状态 |
+Peg pins recent screenshots to a rope under the menu bar — like a clothesline.
+Grab a shot, draw on it, keep it on screen, stitch a long page together, or
+record a short GIF; everything lands on the line and stays a click away.
+
+Built with AppKit only. No Electron, no account, no network, no analytics, no
+auto-updater. Screen Recording is the only permission it asks for.
+
+## Features
+
+| | |
 |---|---|
-| 全屏冻结 + 拖拽选区（消除闪烁、不会把遮罩拍进去） | ✅ |
-| 像素级放大镜：放大画面 + 坐标 + 取色 + HEX | ✅ |
-| 选区尺寸实时显示（真实像素，Retina 已换算） | ✅ |
-| `⌃⌥X` 框完松开就复制并保存，`⌃⌥A` 框完出现标注工具条 | ✅ |
-| 截图四角默认切成圆角，可在设置里关掉 | ✅ |
-| 拖拽后 ⏎ 复制到剪贴板，同时存 `~/Pictures/Peg/` | ✅ |
-| 双击选区内部直接复制 | ✅ |
-| `P` 把选区贴成置顶窗口：拖动移动、滚轮缩放、右键菜单、Esc 关闭；带圆角阴影和描边 | ✅ |
-| 晾图绳：截图自动挂到屏幕顶部，指针贴到屏幕最上沿滑出 | ✅ |
-| 晾图绳交互：单击复制、双击打开、右键菜单、拖进任何 App / 文件夹 | ✅ |
-| **选区内直接标注**：矩形/椭圆/箭头/铅笔/马克笔/文字/马赛克/模糊，画完 ⏎ 连标注一起复制 | ✅ |
-| **滚动长截图**：选区后按 `L`，手动滚，实时拼接（上下都能接） | ✅ |
-| **窗口自动识别**：还没按下鼠标时，指针下的窗口自动高亮，单击即框住整个窗口 | ✅ |
-| **截图历史**：`⌃⌥H` 网格浏览磁盘上所有截图，搜索 / 标注 / 贴图 / 删除 | ✅ |
-| **设置**：保存文件夹、PNG / JPEG 质量、自动复制、历史保留天数、圆角开关 | ✅ |
-| **贴图**：`P` 贴选区、`⌃⌥P` 贴上一张（可连续多贴）、`⌃⌥V` 贴剪贴板、晾图绳右键贴图 | ✅ |
-| **框选后的工具条**：8 个工具 + 撤销/完成/贴图/长截图，点一下就在选区里画 | ✅ |
-| **GIF 录制**：`⌃⌥G` 框选区域，录到按 `⌃⌥G` 为止，12fps、最长 20 秒、宽度压到 900px | ✅ |
+| **Frozen-screen snip** | Every display is captured first, so the selection overlay never appears in the output and the magnifier works on real pixels. |
+| **Window snapping** | Hover a window and it is outlined; click to take the whole window, drag to pick your own rectangle. |
+| **Inline annotation** | 8 tools (rectangle, ellipse, arrow, pen, marker, text, mosaic, blur) drawn straight onto the frozen screen. What you draw is what you get. |
+| **Scroll capture** | Manually scroll a region; frames are aligned by row fingerprints and stitched, both downwards and upwards. |
+| **GIF recording** | Frame a region, record up to 20 s at 12 fps, stop with the same shortcut. A red frame shows exactly what is being recorded. |
+| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere, double-click to open. |
+| **Pins** | Any shot can float above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. |
+| **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
+| **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon. |
 
-## 标注
+## Shortcuts
 
-**框完选区，下方会出现一条工具条**（矩形 / 椭圆 / 箭头 / 画笔 / 荧光笔 / 文字 / 马赛克 / 模糊，
-再往右是撤销、完成、贴到屏幕、长截图）。点一个工具，就在**选区里直接画**——
-落笔就是截图里会留下的那一层，所见即所得。
-
-| 操作 | |
+| Key | Action |
 |---|---|
-| `1`–`8` | 矩形 / 椭圆 / 箭头 / 铅笔 / 马克笔 / 文字 / 马赛克 / 模糊 |
-| 再点一次同一个工具，或 `Esc` | 回到普通选区 |
-| 在选区里拖 | 画 |
-| `⌘Z` | 撤销（只能撤销，不能移动已画的形状——这是有意的，简单可控） |
-| `⏎` 或「完成」 | 复制 + 保存 + 挂上绳子 |
-| `P` / `L` | 贴到屏幕 / 长截图 |
-| `Esc` | 先退出工具，再按一次才是取消整张截图 |
+| `⌃⌥X` | Snip and save — release the mouse and it is already copied and written to disk |
+| `⌃⌥A` | Snip and annotate — the tool bar appears under the selection |
+| `⌃⌥G` | Record a GIF — frame a region, press again to stop |
+| `⌃⌥P` | Pin the previous screenshot (press repeatedly to walk back through history) |
+| `⌃⌥V` | Pin the image on the clipboard |
+| `⌃⌥H` | Screenshot history |
+| `⌃⌥S` | Show / hide the clothesline |
 
-「完成」是唯一产生图片的时刻：剪贴板里、磁盘上、贴到屏幕上的，是**同一张贴图**，
-里面已经带着你画的标注。标注只是画在冻结那一屏上的一层，收工时一次性压进裁好的位图，
-所以不存在「先截一张、再另存一张」的两套来源。想事后改，去历史里双击，
-会开一个独立编辑器另存一份新的。
+While sniffing a region: `1`–`8` pick a tool, `⌘Z` undoes, `⏎` commits,
+`P` pins the selection, `L` starts a scroll capture, `Esc` leaves the tool and
+then the snip.
 
-标注存的是**图片像素坐标**，所以屏幕上的预览和最终输出的位置严格一致；
-输出用显式位图上下文，与屏幕缩放无关。马赛克/模糊是把整张图预先处理一遍再按矩形裁剪，
-不会因为选区大小而变糊。
+## Install
 
-## 截图历史
-
-`⌃⌥H` 打开一张网格，列出保存文件夹里的**全部**截图（不只是晾图绳上的最近 24 张）：
-
-| 操作 | |
-|---|---|
-| 单击 | 选中（点第二下复制并关闭窗口） |
-| 双击 | 进标注编辑器，改完另存为新的一张 |
-| `⏎` | 复制 |
-| `空格` | 贴到屏幕上 |
-| `⌫` | 移到废纸篓 |
-| `←→↑↓` | 在网格里移动 |
-| 搜索框 | 按文件名过滤 |
-
-「设置 → 历史保留」里选 7 / 30 / 90 天或永久：到期的东西会在启动时和每次保存后
-自动进废纸篓（`historyDays = 0` 表示永不清理）。
-
-## 滚动长截图
-
-1. `⌃⌥X` 框选要拼接的区域（尽量只框住会跟着滚的那一列，别把固定侧边栏框进来）；
-2. 按 **`L`** 进入长截图：区域外变暗，右下出现控制条；
-3. **手动滚鼠标滚轮**（慢一点更准，滚太快会提示"这一下没对上"）；
-4. 拼够了按 **`⌃⌥X`**，或点控制条上的「完成」→ 自动复制 + 存盘 + 挂上绳子。
-
-原理：每帧只用「和上一帧重叠的部分」求位移——在 1/4 分辨率上做互相关找候选，
-再回原分辨率精确到像素，粘性页眉/页脚只保留一次，重复内容判不出来时**宁可失败也不瞎拼**。
-浏览器那种亚像素滚动也没问题（帧先做垂直模糊）。
-
-已知边界：只拼一个屏内选区、纯色/整齐重复的页面会被拒绝（这是故意的）。上下方向都支持：
-往上滚会把新内容接在图片顶部，滚回来也不会重复。
-
-## 安装
+Peg is not notarized. Build it yourself:
 
 ```bash
-cd ~/opensource/peg
-bash scripts/build-app.sh          # 产出 build/Peg.app
-cp -R build/Peg.app /Applications/ # 建议放进 /Applications，TCC 身份更稳定
-open /Applications/Peg.app
+git clone https://github.com/ursasi/peg.git
+cd peg
+bash scripts/build-app.sh
+cp -R build/Peg.app /Applications/
+open -a /Applications/Peg.app
 ```
 
-首次按 `⌃⌥X` 会要求「屏幕录制」权限：
+The first snip asks for **Screen Recording**. Grant it, then relaunch Peg —
+macOS only hands the screen to an app after a restart. The build script signs
+with the first code-signing identity it finds so the permission survives
+rebuilds.
 
-1. 弹窗里点「打开系统设置」；
-2. 在「隐私与安全性 → 屏幕录制」勾选 Peg；
-3. 回菜单栏点「重新启动 Peg」（或退出重开）。
+Requires macOS 14 or newer and a Swift toolchain (Xcode or the Command Line
+Tools).
 
-> **为什么每次重新编译都要重新授权？**
-> 脚本优先用你机器上的开发者证书签名；没有证书时退回 ad-hoc 签名，而 ad-hoc
-> 签名的二进制每次编译哈希都变，TCC 会当成新 app。装个自签名证书
-> （钥匙串 → 证书助理 → 创建证书 → 代码签名）就能一劳永逸。
-
-## 用法细节
-
-- **选区**：一次只在一个屏幕内框选（跨屏拼接涉及不同缩放比合成，先不做）。
-- **窗口识别**：进截图后先别按鼠标，指针停在哪个窗口上就高亮哪个窗口，单击即可整窗截图；
-  从同一位置开始拖动，仍然是自由选区。
-- **取消**：`Esc` 或右键。
-- **贴图**：`P`。贴图窗口不抢焦点、在所有桌面可见；双击关闭。
-- **晾图绳**：一根会垂的绳子（抛物线垂度、阴影+高光+两端渐隐），截图用**小夹子**夹在绳上，
-  纸白相框、微微倾斜、新截图会从上面**掉下来**。
-- 三种叫法都行：
-  1. 把指针移到**菜单栏任意位置**（屏幕最上面那条），绳子滑下来，指针离开就收起；
-  2. `⌃⌥S` 手动开/关；
-  3. 菜单栏的剪刀图标 →「晾图绳」。
-- **图片目录**：默认 `~/Pictures/Peg/`，可在设置里改；晾图绳显示最近 24 张，
-  删除用右键「移入废纸篓」，历史窗口能看到全部。
-
-## 代码结构
+## Project layout
 
 ```
-Sources/Peg/
-  main.swift          NSApplication 启动（accessory，仅菜单栏）
-  AppDelegate.swift   状态栏菜单、全局热键绑定
-  HotKey.swift        Carbon RegisterEventHotKey（免辅助功能权限）
-  Permissions.swift   屏幕录制权限的申请与引导
-  Capture.swift       ScreenCaptureKit 逐屏原生分辨率单帧抓取
-  SnipSession.swift   一次截图的完整生命周期：冻结 → 选区 → 裁剪 → 交付
-  SelectionView.swift 遮罩、选区、角标、尺寸标签、放大镜、取色
-  PixelSampler.swift  RGBA 像素快照，给放大镜取色用
-  PinWindow.swift     贴图窗口
-  Shelf.swift         晾图绳的数据与滑出/收起
-  ShelfContentView.swift 晾图绳的绘制（绳子、夹子、相框、卡片、悬浮预览）
-  History.swift       截图历史：磁盘读取、过期清理、网格窗口
-  Settings.swift      设置项与设置窗口
-  WindowFinder.swift  指针下的窗口（CGWindowList）
-  ImageActions.swift  剪贴板、落盘、缩略图
-  Demo.swift          `PEG_DEMO` 用的假画面
+Sources/Peg
+├── App         entry point, status item, hot keys, permissions, debug logging
+├── Capture     screen capture, snip session, selection overlay, window lookup
+├── Annotate    annotation model, renderer, canvas, editor
+├── Scroll      frame receiver, matcher, stitcher, self tests
+├── Record      GIF recorder and HUD/border
+├── Shelf       clothesline panel, cards, hover preview
+├── Pin         floating pin windows
+├── History     history window and retention
+├── Settings    preferences window and stored defaults
+└── Support     displays, clipboard/storage, rounded corners
+Tools
+├── Design      the app mark, shared by both generators
+├── MakeIcon    renders AppIcon.icns at build time
+└── MakeBanner  renders docs/banner.png
 ```
 
-设计上的三个取舍：
-
-1. **先冻结再画遮罩**，而不是边截边画。这样遮罩永远不会进图，放大镜读的是真像素，
-   拖动时也没有实时采集的延迟。
-2. **所有坐标以点为单位、以左上为原点**（`isFlipped = true`），只在裁剪那一刻乘
-   `image.width / screen.width` 换算成像素，避免多屏 + Retina 的经典错位。
-3. **热键走 Carbon**，晾图绳靠 0.09s 轮询指针位置（不用全局事件监听，也不需要辅助功能
-   权限），所以整个 app 除了屏幕录制之外不要任何授权。
-
-## 开发
-
-这台机器的 Command Line Tools 里 SwiftPM 依赖的 BuildServerProtocol 坏了
-（`Symbol not found: ...SourceKitInitializeA12ResponseData...`），所以构建脚本
-绕开 SwiftPM，直接用 `swiftc` 编译所有源文件。
+## Development
 
 ```bash
-bash scripts/build-app.sh          # 编译 + 打包 + 签名
-PEG_DEMO=shelf  ./build/Peg.app/Contents/MacOS/Peg   # 直接展开晾图绳
-PEG_DEMO=overlay ./build/Peg.app/Contents/MacOS/Peg  # 假画面 + 预置选区，验证 UI
-PEG_DEMO=overlay PEG_DEMO_EMPTY=1 ...                # 假画面 + 未选区状态
-PEG_DEBUG=1   ./build/Peg.app/Contents/MacOS/Peg      # 打印晾图绳的指针轮询日志
+swift build                 # compile
+bash scripts/build-app.sh   # build, generate the icon, sign Peg.app
+PEG_SELFTEST=1 .build/debug/Peg   # scroll-capture matcher/stitcher tests
+PEG_DEMO=shelf|snip|overlay|settings|annotate  # open one UI without a capture
 ```
 
-`PEG_DEMO=overlay` 不需要屏幕录制权限，用来调界面很方便。
+`PEG_DEBUG=1` adds a test channel: write a command to `/tmp/peg-cmd`
+(`snip`, `record`, `hover:N`, `click:x,y`, …) and read `/tmp/peg-debug.log`.
+It exists so automation never has to synthesise system-wide key events.
 
-## 路线图
+## Known limitations
 
-3. 长截图的横向模式（现在只做纵向）。
-4. 元素吸附：`AXUIElementCopyElementAtPosition` 自动贴合窗口与控件（需辅助功能权限）。
+- One display per selection; nothing spans screens.
+- Scroll capture needs manual scrolling and refuses frames it cannot align
+  confidently rather than guessing.
+- Annotations cannot be moved after they are drawn.
+- Copying a GIF puts a still frame on the clipboard; drag the file for the
+  animation.
+- macOS 14+ only, and no notarization.
 
-## 许可
+## License
 
-MIT（见 LICENSE）。
-
-灵感来自 [Snipaste](https://www.snipaste.com/)（闭源，仅参考交互）、
-[PixPin](https://pixpin.cn/)（闭源，仅参考功能）和
-[Tendedero](https://github.com/alejandrobujan/tendedero)（MIT，"晾衣绳"这个交互的出处）。
-本项目没有使用它们的任何代码或图标。
+MIT — see [LICENSE](LICENSE).

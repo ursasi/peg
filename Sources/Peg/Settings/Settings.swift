@@ -74,6 +74,12 @@ enum Prefs {
         set { UserDefaults.standard.set(newValue, forKey: "historyDays") }
     }
 
+    /// Show Peg in the Dock as well as the menu bar.
+    static var showInDock: Bool {
+        get { UserDefaults.standard.bool(forKey: "showInDock") }
+        set { UserDefaults.standard.set(newValue, forKey: "showInDock") }
+    }
+
     /// Round the corners of every capture. On unless the user turns it off.
     static var roundedCorners: Bool {
         get { UserDefaults.standard.object(forKey: "roundedCorners") as? Bool ?? true }

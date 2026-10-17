@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var snipHotKey: HotKey?
     private var markupHotKey: HotKey?
     private var recordHotKey: HotKey?
+    private var dockItem: NSMenuItem?
     private var debugTimer: Timer?
     private var shelfHotKey: HotKey?
     private var pastePinHotKey: HotKey?
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pinOlderHotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applyDockPreference()
         setUpStatusItem()
         setUpHotKeys()
         Shelf.shared.start()
@@ -133,6 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "history": HistoryWindow.shared.show()
         case "shelf": Shelf.shared.toggle()
         case "settings": SettingsWindow.shared.show()
+        case "dock":
+            toggleDock()
         case "closepins":
             PinController.shared.closeAll()
         case "pin":
@@ -189,6 +193,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func applyDockPreference() {
+        NSApp.setActivationPolicy(Prefs.showInDock ? .regular : .accessory)
+    }
+
+    @objc private func toggleDock() {
+        Prefs.showInDock.toggle()
+        applyDockPreference()
+        updateDockItemState()
+    }
+
+    private func updateDockItemState() {
+        dockItem?.state = Prefs.showInDock ? .on : .off
+    }
+
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
@@ -236,6 +254,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let pastePin = NSMenuItem(title: "贴剪贴板图片", action: #selector(pastePin), keyEquivalent: "")
         menu.addItem(pastePin)
+
+        let dock = NSMenuItem(title: "在 Dock 中显示", action: #selector(toggleDock), keyEquivalent: "")
+        dock.target = self
+        dock.state = Prefs.showInDock ? .on : .off
+        menu.addItem(dock)
+        dockItem = dock
 
         let settings = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(settings)

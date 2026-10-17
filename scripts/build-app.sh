@@ -9,6 +9,7 @@ ARCH="$(uname -m)"
 TARGET="${ARCH}-apple-macos14.0"
 
 APP="build/Peg.app"
+rm -rf "$APP"
 BIN="$APP/Contents/MacOS/Peg"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
@@ -26,6 +27,14 @@ fi
 
 cp "$COMPILED" "$BIN"
 
+# Generated icon: the mark lives in Tools/MakeIcon, not in a binary asset.
+swiftc -O Tools/MakeIcon/main.swift -o build/makeicon >/dev/null 2>&1
+if [ -x build/makeicon ] && build/makeicon "$APP/Contents/Resources" >/dev/null 2>&1; then
+    echo "icon: generated"
+else
+    echo "icon: skipped (see Tools/MakeIcon/main.swift)"
+fi
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -34,6 +43,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key>              <string>Peg</string>
     <key>CFBundleDisplayName</key>       <string>Peg</string>
     <key>CFBundleExecutable</key>        <string>Peg</string>
+    <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>CFBundleIdentifier</key>        <string>com.zhangshuohua.peg</string>
     <key>CFBundlePackageType</key>       <string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.4.0</string>

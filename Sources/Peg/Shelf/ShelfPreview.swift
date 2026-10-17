@@ -150,10 +150,6 @@ final class PreviewContentView: NSView {
         frameDelays = []
     }
 
-    func hideContent() {
-        stopAnimation()
-        image = nil
-    }
 
     // Deliberately *not* flipped: NSImage draws top-row-first only in an
     // unflipped view, and a flipped one renders the picture upside down.

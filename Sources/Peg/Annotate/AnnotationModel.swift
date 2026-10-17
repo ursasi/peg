@@ -29,12 +29,6 @@ enum AnnotationTool: Int, CaseIterable {
         }
     }
 
-    var isDrag: Bool {
-        switch self {
-        case .pen, .marker: return false
-        default: return true
-        }
-    }
 }
 
 /// One mark on the image. Coordinates are always in image pixels, top-left

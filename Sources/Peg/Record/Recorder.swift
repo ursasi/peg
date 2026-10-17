@@ -19,10 +19,8 @@ final class Recorder {
     private var configuration: SCStreamConfiguration?
     private var frames: [CGImage] = []
     private var started = Date()
-    private var region: CGRect = .zero      // top-left points, screen-local
-    private var screen: NSScreen?
-    private var displayID: CGDirectDisplayID = 0
     private var hud: RecordHUD?
+    private var border: RecordBorder?
 
     /// GIF playback rate. 12 fps reads as motion without ballooning the file.
     private let fps: Double = 12
@@ -33,10 +31,6 @@ final class Recorder {
 
     func begin(region: CGRect, on screen: NSScreen) async {
         guard !isRecording else { return }
-        guard let id = Displays.id(of: screen) else { return }
-        self.region = region
-        self.screen = screen
-        displayID = id
         frames.removeAll()
         started = Date()
 
@@ -52,6 +46,11 @@ final class Recorder {
         hud.onStop = { Recorder.shared.stop() }
         hud.show(near: region, on: screen)
         self.hud = hud
+
+        // Without an outline there is no way to tell what is inside the frame.
+        let border = RecordBorder(region: region, on: screen)
+        border.show()
+        self.border = border
         NSSound(named: "Tink")?.play()
 
         task = Task { [weak self] in
@@ -110,7 +109,7 @@ final class Recorder {
               image.width > 0, image.height > 0
         else { return }
         frames.append(image)
-        hud?.tick(elapsed: elapsed, frames: frames.count)
+        hud?.tick(elapsed: elapsed)
     }
 
     func stop() {
@@ -122,6 +121,8 @@ final class Recorder {
         configuration = nil
         hud?.close()
         hud = nil
+        border?.close()
+        border = nil
         NSSound(named: "Pop")?.play()
 
         let captured = frames
@@ -237,14 +238,14 @@ final class RecordHUD: NSPanel {
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, Recorder.shared.isRecording else { return }
-                self.tick(elapsed: Recorder.shared.elapsed, frames: 0)
+                self.tick(elapsed: Recorder.shared.elapsed)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         clock = timer
     }
 
-    func tick(elapsed: TimeInterval, frames: Int) {
+    func tick(elapsed: TimeInterval) {
         let seconds = Int(elapsed)
         label.stringValue = String(format: "●  %d:%02d", seconds / 60, seconds % 60)
     }
@@ -257,5 +258,59 @@ final class RecordHUD: NSPanel {
         clock?.invalidate()
         clock = nil
         super.close()
+    }
+}
+
+/// A thin red frame around the region being recorded. It is a separate window
+/// from the HUD and is never captured: the recorder's content filter excludes
+/// this app.
+final class RecordBorder: NSPanel {
+    private var region: CGRect
+    private var screenRef: NSScreen
+
+    init(region: CGRect, on screen: NSScreen) {
+        self.region = region
+        self.screenRef = screen
+        let appKit = CGRect(x: screen.frame.minX + region.minX,
+                            y: screen.frame.maxY - region.maxY,
+                            width: region.width,
+                            height: region.height)
+        super.init(contentRect: appKit.insetBy(dx: -3, dy: -3),
+                   styleMask: [.borderless, .nonactivatingPanel],
+                   backing: .buffered,
+                   defer: false)
+        isFloatingPanel = true
+        level = .statusBar
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = false
+        hidesOnDeactivate = false
+        ignoresMouseEvents = true
+        isReleasedWhenClosed = false
+        contentView = RecordBorderView(frame: NSRect(origin: .zero, size: frame.size))
+    }
+
+    func show() {
+        orderFrontRegardless()
+    }
+}
+
+private final class RecordBorderView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let rect = bounds.insetBy(dx: 1.5, dy: 1.5)
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 3
+        path.lineJoinStyle = .round
+        NSColor.systemRed.withAlphaComponent(0.92).setStroke()
+        path.stroke()
+
+        // Inner hairline so the frame reads on light and dark backgrounds.
+        let inner = NSBezierPath(rect: rect.insetBy(dx: 1.5, dy: 1.5))
+        inner.lineWidth = 1
+        NSColor.black.withAlphaComponent(0.25).setStroke()
+        inner.stroke()
     }
 }

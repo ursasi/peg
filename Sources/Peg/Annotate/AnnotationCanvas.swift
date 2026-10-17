@@ -43,7 +43,6 @@ final class AnnotationCanvas: NSView, NSTextFieldDelegate {
         NSSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale)
     }
 
-    var hasContent: Bool { !shapes.isEmpty }
 
     /// Used by the demo mode to show a populated canvas.
     func addShapes(_ new: [AnnotationShape]) {
