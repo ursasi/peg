@@ -575,10 +575,7 @@ final class ThumbView: NSView, NSDraggingSource {
         let onScreen = window.convertToScreen(convert(bounds, to: nil))
         let screen = window.screen ?? NSScreen.main
         guard let screen else { return }
-        // Decode through ImageIO at preview size: reading a 2940px PNG at full
-        // resolution on every hover stalls the animation.
-        let image = Thumbnailer.make(item.url, maxPixel: 1600) ?? item.thumb
-        PreviewPanel.shared.show(image, near: onScreen, on: screen)
+        PreviewPanel.shared.show(item.url, near: onScreen, on: screen)
     }
 
     // MARK: - Drawing
@@ -718,6 +715,26 @@ final class ThumbView: NSView, NSDraggingSource {
         border.stroke()
 
         drawStamp(below: card)
+        if GIFFile.isAnimated(item.url) { drawGIFBadge(in: frameRect) }
+    }
+
+    /// A small "GIF" tag: without it a recording looks like a still capture on
+    /// the line, and only the hover preview reveals that it moves.
+    private func drawGIFBadge(in card: CGRect) {
+        let text = "GIF" as NSString
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 8, weight: .bold),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.95),
+            .kern: 0.5
+        ]
+        let size = text.size(withAttributes: attributes)
+        let plate = CGRect(x: card.maxX - size.width - 11,
+                           y: card.minY + 5,
+                           width: size.width + 8,
+                           height: size.height + 4)
+        NSColor.black.withAlphaComponent(0.55).setFill()
+        NSBezierPath(roundedRect: plate, xRadius: 3, yRadius: 3).fill()
+        text.draw(at: NSPoint(x: plate.minX + 4, y: plate.minY + 2), withAttributes: attributes)
     }
 
     /// Time the shot was taken, in type small enough to read as a caption and

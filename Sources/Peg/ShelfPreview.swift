@@ -9,7 +9,9 @@ final class PreviewPanel {
     private var content: PreviewContentView?
     private var hideWork: DispatchWorkItem?
 
-    func show(_ image: NSImage, near rect: CGRect, on screen: NSScreen) {
+    func show(_ url: URL, near rect: CGRect, on screen: NSScreen) {
+        let still = Thumbnailer.make(url, maxPixel: 1600) ?? NSImage(contentsOf: url)
+        guard let image = still else { return }
         hideWork?.cancel()
 
         let visible = screen.visibleFrame
@@ -41,7 +43,7 @@ final class PreviewPanel {
 
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        content?.image = image
+        content?.show(url: url, still: image)
 
         // The window is placed at its final size straight away, so the image is
         // laid out once. Only alpha and position animate — resizing the window
@@ -104,8 +106,53 @@ final class PreviewPanel {
 /// Draws the picture itself instead of relying on NSImageView's scaling, which
 /// painted the image at its natural size for the first frame after a resize.
 final class PreviewContentView: NSView {
-    var image: NSImage? {
-        didSet { needsDisplay = true }
+    private var image: NSImage?
+    private var frames: [CGImage] = []
+    private var frameDelays: [Double] = []
+    private var frameIndex = 0
+    private var frameTimer: Timer?
+
+    /// A GIF plays here; anything else is a still.
+    func show(url: URL, still: NSImage) {
+        stopAnimation()
+        image = still
+        frameIndex = 0
+        needsDisplay = true
+
+        guard GIFFile.isAnimated(url) else { return }
+        let frames = GIFFile.frames(url)
+        guard frames.count > 1 else { return }
+        self.frames = frames
+        frameDelays = GIFFile.delays(url)
+        scheduleNextFrame()
+    }
+
+    private func scheduleNextFrame() {
+        frameTimer?.invalidate()
+        guard !frames.isEmpty else { return }
+        let delay = frameIndex < frameDelays.count ? frameDelays[frameIndex] : 0.1
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.frames.isEmpty else { return }
+                self.frameIndex = (self.frameIndex + 1) % self.frames.count
+                self.needsDisplay = true
+                self.scheduleNextFrame()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        frameTimer = timer
+    }
+
+    private func stopAnimation() {
+        frameTimer?.invalidate()
+        frameTimer = nil
+        frames = []
+        frameDelays = []
+    }
+
+    func hideContent() {
+        stopAnimation()
+        image = nil
     }
 
     // Deliberately *not* flipped: NSImage draws top-row-first only in an
@@ -121,7 +168,14 @@ final class PreviewContentView: NSView {
         rounded.lineWidth = 1
         rounded.stroke()
 
-        guard let image, image.size.width > 0, image.size.height > 0 else { return }
+        let current: NSImage? = {
+            if !frames.isEmpty, frameIndex < frames.count {
+                let frame = frames[frameIndex]
+                return NSImage(cgImage: frame, size: NSSize(width: frame.width, height: frame.height))
+            }
+            return image
+        }()
+        guard let image = current, image.size.width > 0, image.size.height > 0 else { return }
         let box = bounds.insetBy(dx: 6, dy: 6)
         let aspect = image.size.width / image.size.height
         var rect = box
