@@ -199,20 +199,23 @@ final class SelectionView: NSView {
     }
 
     private func drawHint() {
-        let text = "拖拽选区    ⏎ 复制并保存    P 贴到屏幕    Esc 取消"
+        let text = "拖拽选区　⏎ 复制并保存　P 贴到屏幕\nL 滚动长截图　Esc 取消"
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineSpacing = 4
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-            .foregroundColor: NSColor.white
+            .foregroundColor: NSColor.white,
+            .paragraphStyle: paragraph
         ]
         let size = (text as NSString).size(withAttributes: attributes)
-        let box = CGRect(x: bounds.midX - size.width / 2 - 14,
-                         y: bounds.midY - size.height / 2 - 8,
-                         width: size.width + 28,
-                         height: size.height + 16)
-        NSColor.black.withAlphaComponent(0.6).setFill()
+        let box = CGRect(x: bounds.midX - size.width / 2 - 18,
+                         y: bounds.midY - size.height / 2 - 10,
+                         width: size.width + 36,
+                         height: size.height + 20)
+        NSColor.black.withAlphaComponent(0.62).setFill()
         NSBezierPath(roundedRect: box, xRadius: 10, yRadius: 10).fill()
-        (text as NSString).draw(at: CGPoint(x: box.minX + 14, y: box.minY + 8),
-                                withAttributes: attributes)
+        (text as NSString).draw(in: box.insetBy(dx: 18, dy: 10), withAttributes: attributes)
     }
 
     private func drawMagnifier() {

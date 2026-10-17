@@ -51,14 +51,25 @@ enum Capture {
                 filter = SCContentFilter(display: display, excludingWindows: [])
             }
 
+            // SCDisplay reports points, not pixels: on a scaled Retina mode
+            // that would give a soft 1x capture. The display mode knows the
+            // real backing resolution.
+            let mode = CGDisplayCopyDisplayMode(display.displayID)
             let config = SCStreamConfiguration()
-            config.width = display.width
-            config.height = display.height
+            config.width = mode?.pixelWidth ?? display.width
+            config.height = mode?.pixelHeight ?? display.height
             config.showsCursor = false
             config.scalesToFit = false
             config.captureResolution = .best
 
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1" {
+                NSLog("Peg display=%u scDisplay=%dx%d screen=%.0fx%.0f backing=%.2f cgPixels=%dx%d image=%dx%d",
+                      display.displayID, display.width, display.height,
+                      screen.frame.width, screen.frame.height, screen.backingScaleFactor,
+                      CGDisplayPixelsWide(display.displayID), CGDisplayPixelsHigh(display.displayID),
+                      image.width, image.height)
+            }
             guard image.width > 0, image.height > 0 else { throw CaptureError.emptyFrame }
             shots[display.displayID] = Shot(displayID: display.displayID, screen: screen, image: image)
         }

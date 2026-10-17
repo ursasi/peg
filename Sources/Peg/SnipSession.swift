@@ -26,6 +26,16 @@ final class SnipSession {
 
     // MARK: - Start / stop
 
+    /// The snip hotkey does double duty: while a scroll capture is running it
+    /// finishes that instead of starting a new snip.
+    func hotKeyPressed() {
+        if ScrollSession.shared.isActive {
+            ScrollSession.shared.finish()
+            return
+        }
+        begin()
+    }
+
     func begin() {
         guard !isActive else { return }
         guard Permissions.ensure() else { return }
@@ -70,6 +80,12 @@ final class SnipSession {
         }
         for window in windows {
             (window.contentView as? SelectionView)?.demoCursor = CGPoint(x: 100, y: 906)
+        }
+
+        if ProcessInfo.processInfo.environment["PEG_DEMO_SCROLL"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+                MainActor.assumeIsolated { self?.beginScroll() }
+            }
         }
         redraw()
     }
@@ -174,6 +190,9 @@ final class SnipSession {
         case 35: // p
             commit(.pin)
             return true
+        case 37: // l
+            beginScroll()
+            return true
         default:
             return false
         }
@@ -214,6 +233,18 @@ final class SnipSession {
         case .pin:
             PinController.shared.pin(cropped, at: onScreen)
         }
+    }
+
+    /// Hands the current selection to the scrolling capture.
+    private func beginScroll() {
+        guard let screen = activeScreen,
+              let rect = selection(on: screen),
+              rect.width >= 16, rect.height >= 16,
+              let displayID = Displays.id(of: screen),
+              shots[displayID] != nil
+        else { return }
+        dismiss()
+        ScrollSession.shared.start(region: rect, screen: screen)
     }
 
     private func report(_ error: Error) {

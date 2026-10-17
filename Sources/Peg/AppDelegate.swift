@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "snip":
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                MainActor.assumeIsolated { SnipSession.shared.begin() }
+                MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed() }
             }
         default:
             break
@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setUpHotKeys() {
         snipHotKey = HotKey(.snip) {
-            MainActor.assumeIsolated { SnipSession.shared.begin() }
+            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed() }
         }
         if snipHotKey == nil {
             NSLog("Peg: ⌃⌥X is taken by another app")
@@ -97,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func snip() {
-        SnipSession.shared.begin()
+        SnipSession.shared.hotKeyPressed()
     }
 
     @objc private func toggleShelf() {

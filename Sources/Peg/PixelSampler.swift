@@ -23,9 +23,8 @@ struct PixelSampler {
                                       space: CGColorSpaceCreateDeviceRGB(),
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
             else { return false }
-            // Flip so buffer row 0 is the top row, matching CGImage cropping.
-            ctx.translateBy(x: 0, y: CGFloat(h))
-            ctx.scaleBy(x: 1, y: -1)
+            // A bitmap context already stores the top row first, which is what
+            // CGImage cropping uses.
             ctx.interpolationQuality = .none
             ctx.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(w), height: CGFloat(h)))
             return true

@@ -1,6 +1,4 @@
 import AppKit
-import Combine
-import SwiftUI
 
 struct ShotItem: Identifiable, Equatable {
     let url: URL
@@ -15,16 +13,19 @@ struct ShotItem: Identifiable, Equatable {
 /// The clothesline: recent captures hang at the top of the screen, out of the
 /// way until the pointer reaches the top edge.
 @MainActor
-final class Shelf: ObservableObject {
+final class Shelf {
     static let shared = Shelf()
 
-    @Published private(set) var items: [ShotItem] = []
+    private(set) var items: [ShotItem] = [] {
+        didSet { content?.setItems(items) }
+    }
 
     private var panel: NSPanel?
     private var isShown = false
     private var hideWork: DispatchWorkItem?
     private var pollTimer: Timer?
     private var currentScreen: NSScreen?
+    private var content: ShelfContentView?
 
     private let height: CGFloat = 148
     private let limit = 24
@@ -93,6 +94,12 @@ final class Shelf: ObservableObject {
         let item = ShotItem(url: url, created: Date(), thumb: thumb)
         items.insert(item, at: 0)
         if items.count > limit { items.removeLast(items.count - limit) }
+    }
+
+    private func saveToDesktop(_ item: ShotItem) {
+        guard let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first else { return }
+        let target = desktop.appendingPathComponent(item.url.lastPathComponent)
+        try? FileManager.default.copyItem(at: item.url, to: target)
     }
 
     func remove(_ item: ShotItem) {
@@ -196,10 +203,16 @@ final class Shelf: ObservableObject {
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = false
 
-        let host = NSHostingView(rootView: ShelfView(store: self))
-        host.frame = NSRect(x: 0, y: 0, width: 800, height: height)
-        host.autoresizingMask = [.width, .height]
-        panel.contentView = host
+        let content = ShelfContentView(frame: NSRect(x: 0, y: 0, width: 800, height: height))
+        content.autoresizingMask = [.width, .height]
+        content.onCopy = { item in Clip.copy(contentsOf: item.url) }
+        content.onOpen = { item in NSWorkspace.shared.open(item.url) }
+        content.onReveal = { item in Storage.reveal(item.url) }
+        content.onSaveToDesktop = { [weak self] item in self?.saveToDesktop(item) }
+        content.onTrash = { [weak self] item in self?.remove(item) }
+        content.setItems(items)
+        self.content = content
+        panel.contentView = content
         return panel
     }
 
