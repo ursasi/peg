@@ -64,8 +64,14 @@ final class SelectionView: NSView, NSTextFieldDelegate {
 
     override func mouseMoved(with event: NSEvent) {
         takeFocus()
-        cursor = convert(event.locationInWindow, from: nil)
-        session?.updateHover(on: shot.screen, at: cursor ?? .zero)
+        followPointer(convert(event.locationInWindow, from: nil))
+    }
+
+    /// Called by the session's 0.09s poller too, so the window under the pointer
+    /// is known even if the user never moves the mouse after pressing the hotkey.
+    func followPointer(_ point: CGPoint) {
+        cursor = point
+        session?.updateHover(on: shot.screen, at: point)
         updateBarHover()
         needsDisplay = true
     }
@@ -84,9 +90,11 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
 
-        if let selection = session?.selection(on: shot.screen) {
-            for item in barItems(for: selection) where item.rect.contains(point) {
-                consumedClick = true
+        if let selection = session?.selection(on: shot.screen), session?.mode == .markup {
+            let items = barItems(for: selection)
+            DebugLog.log("mouseDown \(point) selection=\(selection) bar=[\(items.first?.rect.minX ?? 0),\(items.first?.rect.minY ?? 0) \(items.last?.rect.maxX ?? 0),\(items.last?.rect.maxY ?? 0)]")
+            for item in items where item.rect.contains(point) {
+                DebugLog.log("bar hit: \(item.title)")
                 perform(item.action)
                 return
             }
@@ -183,8 +191,10 @@ final class SelectionView: NSView, NSTextFieldDelegate {
             drawMarks(in: selection)
             drawBorder(selection)
             drawSizeLabel(for: selection)
-            drawActionBar(for: selection)
-            if session?.tool != nil { drawHint() }
+            if session?.mode == .markup {
+                drawActionBar(for: selection)
+                if session?.tool != nil { drawHint() }
+            }
         } else if let hover = session?.windowHover, hover.width > 8, hover.height > 8 {
             // Un-dim the window under the pointer and ring it: one click grabs it.
             NSGraphicsContext.saveGraphicsState()
@@ -305,7 +315,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     ]
 
     func barItems(for selection: CGRect) -> [BarItem] {
-        let button = NSSize(width: 32, height: 28)
+        let button = NSSize(width: 34, height: 30)
         let gap: CGFloat = 3
         let sidePadding: CGFloat = 6
         let separator: CGFloat = 9
@@ -315,12 +325,18 @@ final class SelectionView: NSView, NSTextFieldDelegate {
             + separator + sidePadding * 2
         let height = button.height + 10
 
+        // Keep the bar on screen. A selection that fills the display (a whole
+        // window, say) leaves no room below *or* above, so fall back to sitting
+        // inside the bottom edge of the selection instead of sliding off.
         var origin = CGPoint(x: selection.minX, y: selection.maxY + 10)
         if origin.y + height > bounds.maxY - 4 {
             origin.y = selection.minY - height - 10
         }
-        if origin.y < 4 { origin.y = selection.maxY + 10 }
-        origin.x = min(max(4, origin.x), bounds.maxX - total - 4)
+        if origin.y < 4 {
+            origin.y = min(selection.maxY - height - 8, bounds.maxY - height - 8)
+        }
+        origin.y = max(4, min(origin.y, bounds.maxY - height - 4))
+        origin.x = max(4, min(origin.x, bounds.maxX - total - 4))
 
         var items: [BarItem] = []
         var x = origin.x + sidePadding
@@ -444,7 +460,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
 
     private func updateBarHover() {
         var next = -1
-        if let selection = session?.selection(on: shot.screen), let point = cursor {
+        if let selection = session?.selection(on: shot.screen), session?.mode == .markup, let point = cursor {
             for (index, item) in barItems(for: selection).enumerated() where item.rect.contains(point) {
                 next = index
             }
@@ -456,8 +472,12 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     }
 
     private func perform(_ action: BarAction) {
+        // Whatever the button did, this click is spent: the release must not be
+        // read as "resize the selection".
+        consumedClick = true
         switch action {
         case .tool(let tool):
+            DebugLog.log("perform tool=\(tool)")
             // Clicking the active tool again returns to plain selection.
             session?.setTool(session?.tool == tool ? nil : tool)
             needsDisplay = true
@@ -471,7 +491,10 @@ final class SelectionView: NSView, NSTextFieldDelegate {
 
     private static func symbol(_ name: String) -> NSImage? {
         if let cached = symbolCache[name] { return cached }
-        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
+        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else {
+            DebugLog.log("missing symbol: \(name)")
+            return nil
+        }
         // Ask the symbol itself for white: drawing a template into an image and
         // tinting afterwards kept the glyphs dark on the dark bar.
         let config = NSImage.SymbolConfiguration(paletteColors: [.white])
@@ -482,9 +505,14 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     }
 
     private func drawHint() {
-        let text = session?.tool == nil
-            ? "拖拽选区　1–8 选工具直接标注　⏎ 复制并保存　P 贴到屏幕\nL 滚动长截图　Esc 取消"
-            : "在选区内拖拽即可标注　⌘Z 撤销　Esc 回到选区"
+        let text: String
+        if session?.tool != nil {
+            text = "在选区内拖拽即可标注　⌘Z 撤销　Esc 回到选区"
+        } else if session?.mode == .direct {
+            text = "拖拽选区，松开即复制并保存　L 滚动长截图　Esc 取消"
+        } else {
+            text = "拖拽选区　1–8 选工具直接标注　⏎ 复制并保存　P 贴到屏幕\nL 滚动长截图　Esc 取消"
+        }
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineSpacing = 4

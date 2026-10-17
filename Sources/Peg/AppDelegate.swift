@@ -4,6 +4,8 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var snipHotKey: HotKey?
+    private var markupHotKey: HotKey?
+    private var debugTimer: Timer?
     private var shelfHotKey: HotKey?
     private var pastePinHotKey: HotKey?
     private var historyHotKey: HotKey?
@@ -13,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setUpStatusItem()
         setUpHotKeys()
         Shelf.shared.start()
+        DebugLog.log("launched, debug=\(DebugLog.enabled)")
+        setUpDebugChannel()
 
         // Development helpers: PEG_DEMO=shelf|snip
         switch ProcessInfo.processInfo.environment["PEG_DEMO"] {
@@ -52,10 +56,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setUpHotKeys() {
         snipHotKey = HotKey(.snip) {
-            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed() }
+            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .direct) }
         }
         if snipHotKey == nil {
             NSLog("Peg: ⌃⌥X is taken by another app")
+        }
+
+        markupHotKey = HotKey(.snipMarkup) {
+            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .markup) }
+        }
+        if markupHotKey == nil {
+            NSLog("Peg: ⌃⌥A is taken by another app")
         }
 
         shelfHotKey = HotKey(.shelf) {
@@ -79,6 +90,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Test hook: with PEG_DEBUG=1 a distributed notification can start a snip
+    /// or open a window, so automation never has to synthesise system-wide key
+    /// events (a stray global Esc aborts whatever app is in front).
+    private func setUpDebugChannel() {
+        guard DebugLog.enabled else { return }
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(handleDebugNotification(_:)),
+            name: nil,
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+        debugTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
+            MainActor.assumeIsolated { AppDelegate.runPendingDebugCommand() }
+        }
+    }
+
+    /// `echo snipmarkup > /tmp/peg-cmd` from a test script.
+    private static let commandFile = "/tmp/peg-cmd"
+
+    static func runPendingDebugCommand() {
+        guard let text = try? String(contentsOfFile: commandFile, encoding: .utf8) else { return }
+        try? FileManager.default.removeItem(atPath: commandFile)
+        (NSApp.delegate as? AppDelegate)?.run(debugCommand: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func run(debugCommand: String) {
+        DebugLog.log("debug command: \(debugCommand)")
+        switch debugCommand {
+        case "snip": SnipSession.shared.hotKeyPressed(mode: .direct)
+        case "snipmarkup": SnipSession.shared.hotKeyPressed(mode: .markup)
+        case "history": HistoryWindow.shared.show()
+        case "shelf": Shelf.shared.toggle()
+        case "settings": SettingsWindow.shared.show()
+        case "cancel": SnipSession.shared.cancel()
+        case _ where debugCommand.hasPrefix("click:"), _ where debugCommand.hasPrefix("drag:"), _ where debugCommand.hasPrefix("move:"):
+            let parts = debugCommand.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { return }
+            let kind = String(parts[0])
+            let points = parts[1].split(separator: " ").compactMap { pair -> CGPoint? in
+                let xy = pair.split(separator: ",")
+                guard xy.count == 2, let x = Double(xy[0]), let y = Double(xy[1]) else { return nil }
+                return CGPoint(x: x, y: y)
+            }
+            SnipSession.shared.debugEvent(kind, points)
+        default: break
+        }
+    }
+
+    @objc private func handleDebugNotification(_ note: Notification) {
+        let command = note.name.rawValue.replacingOccurrences(of: "com.zhangshuohua.peg.", with: "")
+        DebugLog.log("debug command: \(command)")
+        switch command {
+        case "snip":
+            SnipSession.shared.hotKeyPressed(mode: .direct)
+        case "snipmarkup":
+            SnipSession.shared.hotKeyPressed(mode: .markup)
+        case "history":
+            HistoryWindow.shared.show()
+        case "shelf":
+            Shelf.shared.toggle()
+        case "settings":
+            SettingsWindow.shared.show()
+        case "cancel":
+            SnipSession.shared.cancel()
+        default:
+            break
+        }
+    }
+
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
@@ -91,6 +172,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let snip = NSMenuItem(title: "截图", action: #selector(snip), keyEquivalent: "")
         snip.target = self
         menu.addItem(snip)
+
+        let snipMarkup = NSMenuItem(title: "截图并标注", action: #selector(snipMarkup), keyEquivalent: "")
+        snipMarkup.target = self
+        menu.addItem(snipMarkup)
 
         let shelf = NSMenuItem(title: "晾图绳", action: #selector(toggleShelf), keyEquivalent: "")
         shelf.target = self
@@ -145,7 +230,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quit)
 
         // Show the shortcuts in the menu without registering them twice.
-        snip.attributedTitle = NSAttributedString(string: "截图        ⌃⌥X")
+        snip.attributedTitle = NSAttributedString(string: "截图            ⌃⌥X")
+        snipMarkup.attributedTitle = NSAttributedString(string: "截图并标注      ⌃⌥A")
         shelf.attributedTitle = NSAttributedString(string: "晾图绳      ⌃⌥S")
 
         item.menu = menu
@@ -153,7 +239,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func snip() {
-        SnipSession.shared.hotKeyPressed()
+        SnipSession.shared.hotKeyPressed(mode: .direct)
+    }
+
+    @objc private func snipMarkup() {
+        SnipSession.shared.hotKeyPressed(mode: .markup)
     }
 
     @objc private func toggleShelf() {

@@ -12,7 +12,16 @@ final class SnipSession {
         case pin
     }
 
+    /// Two hotkeys, two behaviours, no setting to remember: one frames and
+    /// saves straight away, the other keeps the selection and puts the drawing
+    /// tools under it.
+    enum Mode {
+        case direct   // ⌃⌥X: release the mouse, it is already copied and saved
+        case markup   // ⌃⌥A: tools appear, ⏎ when done
+    }
+
     private(set) var isActive = false
+    private(set) var mode: Mode = .markup
     private var windows: [SelectionWindow] = []
     private var shots: [CGDirectDisplayID: Shot] = [:]
     private var samplers: [CGDirectDisplayID: PixelSampler] = [:]
@@ -29,6 +38,7 @@ final class SnipSession {
     private var hoverScreen: NSScreen?
     private(set) var windowHover: CGRect?
     private var windowClick: CGPoint?
+    private var hoverTimer: Timer?
 
     /// Marks made on the frozen screen, in screen points. Nothing is cropped,
     /// copied or saved until the snip is finished — so what you paste is exactly
@@ -51,18 +61,20 @@ final class SnipSession {
 
     /// The snip hotkey does double duty: while a scroll capture is running it
     /// finishes that instead of starting a new snip.
-    func hotKeyPressed() {
+    func hotKeyPressed(mode: Mode = .markup) {
         if ScrollSession.shared.isActive {
             ScrollSession.shared.finish()
             return
         }
-        begin()
+        begin(mode: mode)
     }
 
-    func begin() {
+    func begin(mode: Mode = .markup) {
         guard !isActive else { return }
         guard Permissions.ensure() else { return }
         isActive = true
+        self.mode = mode
+        DebugLog.log("snip begin mode=\(mode)")
         Shelf.shared.hideNow(animated: false)
 
         Task { @MainActor in
@@ -83,6 +95,7 @@ final class SnipSession {
     func beginDemo() {
         guard !isActive else { return }
         isActive = true
+        mode = .markup
         var shots: [CGDirectDisplayID: Shot] = [:]
         for ref in Displays.all {
             let image = DemoImage.make(size: ref.screen.frame.size, scale: ref.screen.backingScaleFactor)
@@ -113,6 +126,34 @@ final class SnipSession {
         redraw()
     }
 
+    /// The window under the pointer is found by polling, not by waiting for a
+    /// mouse-move: press the hotkey and click straight away (no pointer motion
+    /// at all) and it still grabs the window you were looking at.
+    private func startHoverPolling() {
+        stopHoverPolling()
+        hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.09, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pollPointer() }
+        }
+        pollPointer()
+    }
+
+    private func stopHoverPolling() {
+        hoverTimer?.invalidate()
+        hoverTimer = nil
+    }
+
+    private func pollPointer() {
+        guard isActive else { return }
+        let mouse = NSEvent.mouseLocation
+        guard let screen = Displays.underMouse(),
+              let window = windows.first(where: { $0.frame.contains(mouse) }),
+              let view = window.contentView as? SelectionView
+        else { return }
+        let local = CGPoint(x: mouse.x - screen.frame.minX,
+                            y: screen.frame.maxY - mouse.y)
+        view.followPointer(local)
+    }
+
     private func present(_ shots: [CGDirectDisplayID: Shot]) {
         self.shots = shots
         samplers = shots.reduce(into: [:]) { result, pair in
@@ -127,7 +168,12 @@ final class SnipSession {
             window.setFrame(shot.screen.frame, display: false)
             window.orderFrontRegardless()
             windows.append(window)
+            if DebugLog.enabled {
+                try? "\(window.windowNumber)".write(toFile: "/tmp/peg-winnum", atomically: true, encoding: .utf8)
+            }
         }
+
+        startHoverPolling()
 
         NSApp.activate(ignoringOtherApps: true)
         let mouse = NSEvent.mouseLocation
@@ -157,6 +203,8 @@ final class SnipSession {
         shapes.removeAll()
         draftShape = nil
         tool = nil
+        mode = .markup
+        stopHoverPolling()
         isActive = false
         NSCursor.arrow.set()
     }
@@ -185,6 +233,7 @@ final class SnipSession {
     func updateHover(on screen: NSScreen, at point: CGPoint) {
         guard anchor == nil else { return }
         let rect = WindowFinder.windowRect(atLocalPoint: point, on: screen)
+        if rect != windowHover { DebugLog.log("hover \(point.x),\(point.y) -> \(rect.map { "\($0)" } ?? "nil")") }
         if hoverScreen !== screen || rect != windowHover {
             hoverScreen = screen
             windowHover = rect
@@ -237,6 +286,7 @@ final class SnipSession {
         guard let shape = draftShape else { return }
         draftShape = nil
         if !shape.isDegenerate { shapes.append(shape) }
+        DebugLog.log("endShape tool=\(shape.tool) degenerate=\(shape.isDegenerate) count=\(shapes.count) rect=\(shape.rect)")
         redraw()
     }
 
@@ -261,6 +311,7 @@ final class SnipSession {
     }
 
     func mouseDown(on screen: NSScreen, at point: CGPoint) {
+        DebugLog.log("session.mouseDown \(point) hover=\(windowHover.map { "\($0)" } ?? "nil") anchor=\(String(describing: anchor))")
         if anchor == nil, let rect = windowHover, rect.contains(point) {
             // One click grabs the whole window; dragging from here still makes
             // a free selection instead.
@@ -295,16 +346,59 @@ final class SnipSession {
     func mouseUp(on screen: NSScreen, at point: CGPoint) {
         guard activeScreen === screen, anchor != nil else { return }
         if windowClick != nil {
+            // A click on a window keeps the whole window: the release point is
+            // only used when it was an actual drag.
             windowClick = nil
-            current = point
-            redraw()
-            if Prefs.snipImmediate { commit(.copyAndSave) }
+            if mode == .direct { commit(.copyAndSave) }
             return
         }
         current = point
         redraw()
-        if Prefs.snipImmediate, let rect = selection(on: screen), rect.width >= 8, rect.height >= 8 {
+        if mode == .direct, let rect = selection(on: screen), rect.width >= 8, rect.height >= 8 {
             commit(.copyAndSave)
+        }
+    }
+
+    // MARK: - Debug input
+
+    /// PEG_DEBUG=1 test hook: synthesise the AppKit callbacks directly instead of
+    /// posting system events, so automation cannot leak keystrokes to other apps.
+    func debugEvent(_ kind: String, _ points: [CGPoint]) {
+        guard isActive, let firstPoint = points.first,
+              let window = windows.first(where: {
+                  $0.frame.contains(firstPoint) || $0.frame.contains(points.last ?? firstPoint)
+              }),
+              let view = window.contentView as? SelectionView
+        else { DebugLog.log("debugEvent: no window for \(points)"); return }
+
+        func event(_ type: NSEvent.EventType, _ point: CGPoint) -> NSEvent? {
+            NSEvent.mouseEvent(with: type,
+                               location: NSPoint(x: point.x - window.frame.minX,
+                                                 y: window.frame.maxY - point.y),
+                               modifierFlags: [],
+                               timestamp: ProcessInfo.processInfo.systemUptime,
+                               windowNumber: window.windowNumber,
+                               context: nil,
+                               eventNumber: 0,
+                               clickCount: 1,
+                               pressure: 1)
+        }
+
+        switch kind {
+        case "click":
+            if let e = event(.leftMouseDown, firstPoint) { view.mouseDown(with: e) }
+            if let e = event(.leftMouseUp, firstPoint) { view.mouseUp(with: e) }
+        case "drag":
+            guard points.count >= 2, let last = points.last else { return }
+            if let e = event(.leftMouseDown, firstPoint) { view.mouseDown(with: e) }
+            for point in points.dropFirst() {
+                if let e = event(.leftMouseDragged, point) { view.mouseDragged(with: e) }
+            }
+            if let e = event(.leftMouseUp, last) { view.mouseUp(with: e) }
+        case "move":
+            view.followPointer(firstPoint)
+        default:
+            break
         }
     }
 
@@ -317,12 +411,13 @@ final class SnipSession {
     // MARK: - Keyboard
 
     func keyDown(_ event: NSEvent) -> Bool {
-        if event.modifierFlags.contains(.command),
+        if mode == .markup, event.modifierFlags.contains(.command),
            event.charactersIgnoringModifiers?.lowercased() == "z" {
             undo()
             return true
         }
-        if let digit = Int(event.charactersIgnoringModifiers ?? ""), digit >= 1, digit <= 8,
+        if mode == .markup,
+           let digit = Int(event.charactersIgnoringModifiers ?? ""), digit >= 1, digit <= 8,
            let tool = AnnotationTool(rawValue: digit - 1) {
             setTool(tool)
             return true
@@ -339,7 +434,7 @@ final class SnipSession {
             commit(.copyAndSave)
             return true
         case 49: // space: first tool, so the keyboard-only path still works
-            setTool(.rect)
+            if mode == .markup { setTool(.rect) }
             return true
         case 35: // p
             commit(.pin)
@@ -356,6 +451,7 @@ final class SnipSession {
 
     func commit(_ finish: Finish) {
         guard let cropped = cropSelection() else { return }
+        DebugLog.log("commit \(finish) rect=\(cropped.onScreen) shapes=\(shapes.count)")
         let onScreen = cropped.onScreen
         let flattened = flatten(cropped.image,
                                 selection: onScreen,
@@ -364,6 +460,7 @@ final class SnipSession {
 
         switch finish {
         case .copyAndSave:
+            DebugLog.log("saved \(flattened.width)x\(flattened.height) marks=\(cropped.image.width > 0)")
             if Prefs.autoCopy { Clip.copy(flattened) }
             if let url = Storage.save(flattened) {
                 Shelf.shared.insert(url)

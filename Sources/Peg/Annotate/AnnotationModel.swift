@@ -66,10 +66,17 @@ struct AnnotationShape {
     }
 
     var rect: CGRect {
-        CGRect(x: min(start.x, end.x),
-               y: min(start.y, end.y),
-               width: abs(start.x - end.x),
-               height: abs(start.y - end.y))
+        let box = CGRect(x: min(start.x, end.x),
+                         y: min(start.y, end.y),
+                         width: abs(start.x - end.x),
+                         height: abs(start.y - end.y))
+        // Freehand strokes carry their extent in `points`, not in start/end.
+        guard !points.isEmpty else { return box }
+        let xs = points.map(\.x), ys = points.map(\.y)
+        let pen = CGRect(x: xs.min() ?? 0, y: ys.min() ?? 0,
+                         width: (xs.max() ?? 0) - (xs.min() ?? 0),
+                         height: (ys.max() ?? 0) - (ys.min() ?? 0))
+        return box.union(pen)
     }
 
     /// Too small to keep (a stray click).

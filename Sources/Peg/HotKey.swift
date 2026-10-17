@@ -73,6 +73,7 @@ struct Shortcut {
     let carbonModifiers: UInt32
 
     static let snip = Shortcut(keyCode: kVK_ANSI_X, carbonModifiers: UInt32(controlKey | optionKey))
+    static let snipMarkup = Shortcut(keyCode: kVK_ANSI_A, carbonModifiers: UInt32(controlKey | optionKey))
     static let shelf = Shortcut(keyCode: kVK_ANSI_S, carbonModifiers: UInt32(controlKey | optionKey))
     static let pastePin = Shortcut(keyCode: kVK_ANSI_V, carbonModifiers: UInt32(controlKey | optionKey))
     static let history = Shortcut(keyCode: kVK_ANSI_H, carbonModifiers: UInt32(controlKey | optionKey))
