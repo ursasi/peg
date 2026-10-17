@@ -108,10 +108,11 @@ final class SettingsWindow: NSWindowController {
     private let qualityLabel = NSTextField(labelWithString: "")
     private let copyCheck = NSButton(checkboxWithTitle: "截图后自动复制到剪贴板", target: nil, action: nil)
     private let roundCheck = NSButton(checkboxWithTitle: "截图四角改成圆角", target: nil, action: nil)
+    private var shortcutButtons: [ShortcutAction: ShortcutRecorderButton] = [:]
     private let retentionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 410),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 812),
                               styleMask: [.titled, .closable],
                               backing: .buffered,
                               defer: false)
@@ -198,15 +199,41 @@ final class SettingsWindow: NSWindowController {
         roundCheck.target = self
         roundCheck.action = #selector(roundChanged)
 
+        // Shortcuts, one row per action.
+        let shortcutTitle = NSTextField(labelWithString: "快捷键")
+        shortcutTitle.font = .systemFont(ofSize: 12, weight: .semibold)
+
+        var shortcutRows: [NSView] = []
+        for action in ShortcutAction.allCases {
+            let label = NSTextField(labelWithString: action.title)
+            label.font = .systemFont(ofSize: 12)
+            let button = ShortcutRecorderButton(shortcut: ShortcutStore.shortcut(for: action))
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 132).isActive = true
+            button.onCapture = { [weak self] captured in
+                self?.capture(captured, for: action)
+            }
+            shortcutButtons[action] = button
+            let row = NSStackView(views: [label, NSView(), button])
+            row.orientation = .horizontal
+            row.spacing = 8
+            shortcutRows.append(row)
+        }
+
+        let resetShortcuts = NSButton(title: "恢复默认", target: self, action: #selector(resetShortcuts))
+        resetShortcuts.bezelStyle = .inline
+        resetShortcuts.controlSize = .small
+
+        let resetRow = NSStackView(views: [resetShortcuts, NSView()])
+        resetRow.orientation = .horizontal
+
         let note = NSTextField(wrappingLabelWithString:
-            "截图　⌃⌥X 直接复制并保存　⌃⌥A 带标注工具　⌃⌥G 录 GIF\n"
-            + "标注时　1–8 选工具　⏎ 完成　P 贴到屏幕　L 长截图　Esc 取消\n"
-            + "其它　⌃⌥P 贴上一张　⌃⌥V 贴剪贴板　⌃⌥H 历史　⌃⌥S 晾图绳")
+            "标注时　1–8 选工具　⏎ 完成　P 贴到屏幕　L 长截图　Esc 取消")
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
 
         for view in [folderTitle, folderRow, formatTitle, formatControl, qualityRow,
-                     historyTitle, retentionRow, clipTitle, copyCheck, roundCheck, note] {
+                     historyTitle, retentionRow, clipTitle, copyCheck, roundCheck,
+                     shortcutTitle] + shortcutRows + [resetRow, note] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
@@ -257,6 +284,38 @@ final class SettingsWindow: NSWindowController {
         let values = [7, 30, 90, 0]
         Prefs.historyDays = values[max(0, min(3, retentionPopup.indexOfSelectedItem))]
         _ = HistoryStore.purge()
+    }
+
+    private func capture(_ shortcut: Shortcut?, for action: ShortcutAction) {
+        guard let shortcut else {
+            shortcutButtons[action]?.setShortcut(ShortcutStore.shortcut(for: action))
+            return
+        }
+        guard ShortcutStore.set(shortcut, for: action) else {
+            // Someone else already owns it: point at the collision.
+            NSSound.beep()
+            let owner = ShortcutStore.bindings.first { $0.value == shortcut }?.key
+            let alert = NSAlert()
+            alert.messageText = "这个快捷键已经被「\(owner?.title ?? "其它动作")」占用"
+            alert.addButton(withTitle: "好")
+            alert.runModal()
+            shortcutButtons[action]?.setShortcut(ShortcutStore.shortcut(for: action))
+            return
+        }
+        AppDelegate.shared?.reloadHotKeys()
+        refreshShortcutTitles()
+    }
+
+    @objc private func resetShortcuts() {
+        ShortcutStore.reset()
+        AppDelegate.shared?.reloadHotKeys()
+        refreshShortcutTitles()
+    }
+
+    private func refreshShortcutTitles() {
+        for action in ShortcutAction.allCases {
+            shortcutButtons[action]?.setShortcut(ShortcutStore.shortcut(for: action))
+        }
     }
 
     @objc private func roundChanged() {

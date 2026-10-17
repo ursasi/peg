@@ -39,7 +39,7 @@ analytics, no auto-updater. Screen Recording is the only permission it asks for.
 | **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere, double-click to open. The clothesline idea comes from Tendedero. |
 | **Pins** | Any shot can float above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. |
 | **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
-| **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon. |
+| **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon, and editable shortcuts. |
 
 ## Shortcuts
 

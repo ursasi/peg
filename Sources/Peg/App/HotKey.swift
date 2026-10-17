@@ -28,7 +28,7 @@ final class HotKey {
     private let id: UInt32
     private var ref: EventHotKeyRef?
 
-    init?(_ shortcut: Shortcut, action: @escaping () -> Void) {
+    init?(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
         let id = HotKey.nextID
         HotKey.nextID += 1
         self.id = id
@@ -37,8 +37,8 @@ final class HotKey {
 
         var hkRef: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(signature: OSType(0x5045_4721), id: id) // 'PEG!'
-        let status = RegisterEventHotKey(UInt32(shortcut.keyCode),
-                                         shortcut.carbonModifiers,
+        let status = RegisterEventHotKey(keyCode,
+                                         modifiers,
                                          hotKeyID,
                                          GetApplicationEventTarget(),
                                          0,
@@ -48,6 +48,14 @@ final class HotKey {
             return nil
         }
         self.ref = hkRef
+    }
+
+    /// Unregisters immediately; `deinit` alone would leave the combination
+    /// taken while the object is still alive.
+    func unregister() {
+        if let ref { UnregisterEventHotKey(ref) }
+        ref = nil
+        HotKey.actions[id] = nil
     }
 
     deinit {
@@ -68,15 +76,31 @@ final class HotKey {
     }
 }
 
-struct Shortcut {
-    let keyCode: Int
-    let carbonModifiers: UInt32
+/// Keeps the Carbon hot keys in sync with the stored bindings: changing a
+/// shortcut unregisters everything and registers the new set.
+@MainActor
+final class HotKeyCenter {
+    static let shared = HotKeyCenter()
 
-    static let snip = Shortcut(keyCode: kVK_ANSI_X, carbonModifiers: UInt32(controlKey | optionKey))
-    static let snipMarkup = Shortcut(keyCode: kVK_ANSI_A, carbonModifiers: UInt32(controlKey | optionKey))
-    static let record = Shortcut(keyCode: kVK_ANSI_G, carbonModifiers: UInt32(controlKey | optionKey))
-    static let shelf = Shortcut(keyCode: kVK_ANSI_S, carbonModifiers: UInt32(controlKey | optionKey))
-    static let pastePin = Shortcut(keyCode: kVK_ANSI_V, carbonModifiers: UInt32(controlKey | optionKey))
-    static let history = Shortcut(keyCode: kVK_ANSI_H, carbonModifiers: UInt32(controlKey | optionKey))
-    static let pinOlder = Shortcut(keyCode: kVK_ANSI_P, carbonModifiers: UInt32(controlKey | optionKey))
+    private var hotKeys: [HotKey] = []
+    private(set) var failed: [ShortcutAction] = []
+
+    func apply(handlers: [ShortcutAction: () -> Void]) {
+        hotKeys.forEach { $0.unregister() }
+        hotKeys.removeAll()
+        failed.removeAll()
+
+        for action in ShortcutAction.allCases {
+            guard let handler = handlers[action] else { continue }
+            let shortcut = ShortcutStore.shortcut(for: action)
+            guard shortcut.isUsable else { failed.append(action); continue }
+            if let hotKey = HotKey(keyCode: shortcut.keyCode,
+                                   modifiers: shortcut.modifiers,
+                                   action: handler) {
+                hotKeys.append(hotKey)
+            } else {
+                failed.append(action)
+            }
+        }
+    }
 }

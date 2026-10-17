@@ -2,18 +2,13 @@ import AppKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: AppDelegate?
     private var statusItem: NSStatusItem?
-    private var snipHotKey: HotKey?
-    private var markupHotKey: HotKey?
-    private var recordHotKey: HotKey?
     private var dockItem: NSMenuItem?
     private var debugTimer: Timer?
-    private var shelfHotKey: HotKey?
-    private var pastePinHotKey: HotKey?
-    private var historyHotKey: HotKey?
-    private var pinOlderHotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppDelegate.shared = self
         applyDockPreference()
         setUpStatusItem()
         setUpHotKeys()
@@ -58,46 +53,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setUpHotKeys() {
-        snipHotKey = HotKey(.snip) {
-            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .direct) }
-        }
-        if snipHotKey == nil {
-            NSLog("Peg: ⌃⌥X is taken by another app")
-        }
-
-        markupHotKey = HotKey(.snipMarkup) {
-            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .markup) }
-        }
-        if markupHotKey == nil {
-            NSLog("Peg: ⌃⌥A is taken by another app")
-        }
-
-        recordHotKey = HotKey(.record) {
-            MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .record) }
-        }
-        if recordHotKey == nil {
-            NSLog("Peg: ⌃⌥G is taken by another app")
-        }
-
-        shelfHotKey = HotKey(.shelf) {
-            MainActor.assumeIsolated { Shelf.shared.toggle() }
-        }
-
-        historyHotKey = HotKey(.history) {
-            MainActor.assumeIsolated { HistoryWindow.shared.show() }
-        }
-
-        pinOlderHotKey = HotKey(.pinOlder) {
-            MainActor.assumeIsolated {
-                if !PinController.shared.pinNextOlder() { NSSound.beep() }
+        let handlers: [ShortcutAction: () -> Void] = [
+            .snip: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .direct) } },
+            .snipMarkup: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .markup) } },
+            .record: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .record) } },
+            .shelf: { MainActor.assumeIsolated { Shelf.shared.toggle() } },
+            .history: { MainActor.assumeIsolated { HistoryWindow.shared.show() } },
+            .pinOlder: {
+                MainActor.assumeIsolated {
+                    if !PinController.shared.pinNextOlder() { NSSound.beep() }
+                }
+            },
+            .pastePin: {
+                MainActor.assumeIsolated {
+                    if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
+                }
             }
+        ]
+        HotKeyCenter.shared.apply(handlers: handlers)
+        for action in HotKeyCenter.shared.failed {
+            NSLog("Peg: %@ (⌃⌥ shortcut) is taken by another app", action.title)
         }
+    }
 
-        pastePinHotKey = HotKey(.pastePin) {
-            MainActor.assumeIsolated {
-                if !PinController.shared.pinFromPasteboard() { NSSound.beep() }
-            }
-        }
+    /// Called after the shortcuts change in settings.
+    func reloadHotKeys() {
+        setUpHotKeys()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // A Dock icon click has no window to bring forward; open settings.
+        SettingsWindow.shared.show()
+        return true
     }
 
     /// Test hook: with PEG_DEBUG=1 a distributed notification can start a snip
@@ -135,6 +122,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "history": HistoryWindow.shared.show()
         case "shelf": Shelf.shared.toggle()
         case "settings": SettingsWindow.shared.show()
+        case "menu":
+            if let button = statusItem?.button, let menu = statusItem?.menu {
+                menu.popUp(positioning: nil,
+                           at: NSPoint(x: 0, y: button.bounds.height + 4),
+                           in: button)
+            }
         case "dock":
             toggleDock()
         case "closepins":
@@ -214,7 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "scissors", accessibilityDescription: "Peg")
+            button.image = StatusIcon.make()
             button.image?.isTemplate = true
         }
 
@@ -290,13 +283,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quit.target = self
         menu.addItem(quit)
 
-        // Show the shortcuts in the menu without registering them twice.
-        snip.attributedTitle = NSAttributedString(string: "截图            ⌃⌥X")
-        snipMarkup.attributedTitle = NSAttributedString(string: "截图并标注      ⌃⌥A")
-        record.attributedTitle = NSAttributedString(string: "录制 GIF        ⌃⌥G")
-        shelf.attributedTitle = NSAttributedString(string: "晾图绳      ⌃⌥S")
+        // Real key equivalents, so the shortcut column is right-aligned by
+        // AppKit and follows whatever the user binds. Carbon swallows these
+        // combinations before the menu sees them, so nothing fires twice.
+        for (item, action) in [(snip, ShortcutAction.snip),
+                               (snipMarkup, .snipMarkup),
+                               (record, .record),
+                               (shelf, .shelf),
+                               (history, .history),
+                               (pinOlder, .pinOlder),
+                               (pastePin, .pastePin)] {
+            let shortcut = ShortcutStore.shortcut(for: action)
+            item.keyEquivalent = Shortcut.keyName(shortcut.keyCode).lowercased()
+            item.keyEquivalentModifierMask = Shortcut.modifierFlags(from: shortcut.modifiers)
+        }
 
         item.menu = menu
+        item.behavior = [.removalAllowed]
         statusItem = item
     }
 
