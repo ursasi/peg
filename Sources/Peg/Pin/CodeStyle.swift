@@ -56,6 +56,9 @@ enum CodeStyle {
         ]
         let result = NSMutableAttributedString(string: code, attributes: base)
         let ns = code as NSString
+        // Above this size the regex sweeps cost more than they are worth: a
+        // 100k-line dump should still pin instantly, just in plain type.
+        guard ns.length <= 200_000 else { return result }
 
         func paint(_ pattern: String, _ colour: NSColor, options: NSRegularExpression.Options = []) {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return }
@@ -70,9 +73,10 @@ enum CodeStyle {
         paint(#"//[^\n]*|#[^\n]*|/\*[\s\S]*?\*/"#, comment)
         paint(#"\b\d+(\.\d+)?\b"#, number)
         paint(#"\b[A-Z][A-Za-z0-9_]*\b"#, type)
-        for keyword in keywords {
-            paint("\\b\(keyword)\\b", keywordColour)
-        }
+        // One pass for every keyword: sixty separate regex sweeps over a long
+        // paste is the difference between instant and a visible stall.
+        let sorted = keywords.sorted { $0.count > $1.count }
+        paint("\\b(?:" + sorted.joined(separator: "|") + ")\\b", keywordColour)
         return result
     }
 

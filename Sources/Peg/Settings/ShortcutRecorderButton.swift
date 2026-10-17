@@ -65,6 +65,12 @@ final class ShortcutRecorderButton: NSButton {
         onCapture?(captured)
     }
 
+    /// Closed window while armed: drop the monitor instead of keeping it alive.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { stopRecording() }
+    }
+
     private func stopRecording() {
         isRecording = false
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }

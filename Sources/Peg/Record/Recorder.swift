@@ -24,7 +24,11 @@ final class Recorder {
 
     /// GIF playback rate. 12 fps reads as motion without ballooning the file.
     private let fps: Double = 12
-    private let maxFrames = 240             // 20 seconds
+    private let maxFrames = 200             // ~17 seconds
+    /// Hard cap on the RAW frame data held in memory. A 900pt-wide region costs
+    /// ~2 MB a frame, so a long recording could otherwise eat half a gigabyte.
+    private let maxBytes = 320 * 1024 * 1024
+    private var bytes = 0
     private let maxWidth: CGFloat = 900
 
     var elapsed: TimeInterval { Date().timeIntervalSince(started) }
@@ -32,6 +36,7 @@ final class Recorder {
     func begin(region: CGRect, on screen: NSScreen) async {
         guard !isRecording else { return }
         frames.removeAll()
+        bytes = 0
         started = Date()
 
         let hud = RecordHUD()
@@ -99,7 +104,7 @@ final class Recorder {
 
     private func captureFrame() async {
         guard isRecording, let filter, var configuration else { return }
-        guard frames.count < maxFrames else {
+        guard frames.count < maxFrames, bytes < maxBytes else {
             stop()
             return
         }
@@ -114,6 +119,7 @@ final class Recorder {
               image.width > 0, image.height > 0
         else { return }
         frames.append(image)
+        bytes += image.height * (image.bytesPerRow > 0 ? image.bytesPerRow : image.width * 4)
         hud?.tick(elapsed: elapsed)
     }
 
@@ -132,20 +138,28 @@ final class Recorder {
 
         let captured = frames
         frames.removeAll()
+        bytes = 0
         guard captured.count >= 2 else {
             DebugLog.log("record: too few frames (\(captured.count))")
             return
         }
-        DispatchQueue.main.async {
-            Recorder.finish(captured, fps: 12)
+        // Encoding a few hundred frames takes seconds; keep the UI responsive.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let url = Recorder.writeGIF(captured, fps: 12)
+            guard let url else { return }
+            DispatchQueue.main.async {
+                Clip.copy(contentsOf: url)
+                Shelf.shared.insert(url)
+                Shelf.shared.flash()
+            }
         }
     }
 
-    private static func finish(_ frames: [CGImage], fps: Double) {
-        guard let url = gifURL() else { return }
+    private static func writeGIF(_ frames: [CGImage], fps: Double) -> URL? {
+        guard let url = gifURL() else { return nil }
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL,
                                                                UTType.gif.identifier as CFString,
-                                                               frames.count, nil) else { return }
+                                                               frames.count, nil) else { return nil }
         let loop: [CFString: Any] = [kCGImagePropertyGIFLoopCount: 0]
         CGImageDestinationSetProperties(destination, [
             kCGImagePropertyGIFDictionary: loop
@@ -156,10 +170,8 @@ final class Recorder {
         for frame in frames {
             CGImageDestinationAddImage(destination, frame, frameProperties as CFDictionary)
         }
-        guard CGImageDestinationFinalize(destination) else { return }
-        Clip.copy(contentsOf: url)
-        Shelf.shared.insert(url)
-        Shelf.shared.flash()
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return url
     }
 
     private static let stamp: DateFormatter = {

@@ -118,6 +118,15 @@ final class SettingsWindow: NSWindowController {
                               defer: false)
         window.title = "Peg 设置"
         window.isReleasedWhenClosed = false
+        // The shortcut list made the window tall; shrink it on small displays
+        // instead of letting it run under the Dock.
+        if let visible = NSScreen.main?.visibleFrame,
+           let frame = window.contentView?.frame {
+            let limit = visible.height - 24
+            if frame.height > limit {
+                window.setContentSize(NSSize(width: frame.width, height: limit))
+            }
+        }
         window.center()
         super.init(window: window)
         buildUI()
@@ -250,6 +259,7 @@ final class SettingsWindow: NSWindowController {
         let days = Prefs.historyDays
         retentionPopup.selectItem(at: days == 0 ? 3 : days <= 7 ? 0 : days <= 30 ? 1 : 2)
         copyCheck.state = Prefs.autoCopy ? .on : .off
+        refreshShortcutTitles()
         roundCheck.state = Prefs.roundedCorners ? .on : .off
     }
 

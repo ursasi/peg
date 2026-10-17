@@ -87,6 +87,7 @@ final class PinTextSurface: NSView {
     var onCopy: (() -> Void)?
     var onCloseWindow: (() -> Void)?
 
+    private let scrollView = NSScrollView()
     private let textView = NSTextView()
     private let text: String
     private let lines: [String]
@@ -113,8 +114,23 @@ final class PinTextSurface: NSView {
         textView.isHorizontallyResizable = false
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
+        textView.isVerticallyResizable = true
+
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.documentView = textView
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(textDidScroll),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView)
+        addSubview(scrollView)
+
         applyText()
-        addSubview(textView)
     }
 
     @available(*, unavailable)
@@ -131,7 +147,7 @@ final class PinTextSurface: NSView {
     private var contentWidth: CGFloat {
         let font = CodeStyle.font(size: fontSize)
         let widest = lines.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-        return min(Self.maxWidth, ceil(widest) + 4)
+        return min(Self.maxWidth, ceil(widest) + 16)
     }
 
     private var gutterWidth: CGFloat {
@@ -140,15 +156,28 @@ final class PinTextSurface: NSView {
         return ceil(("8" as NSString).size(withAttributes: [.font: font]).width) * CGFloat(digits) + 12
     }
 
-    func documentSize(fontSize: CGFloat) -> NSSize {
-        let saved = self.fontSize
-        self.fontSize = fontSize
-        defer { self.fontSize = saved }
+    /// Pure measurement: it must not touch `fontSize` (whose observer redraws
+    /// and re-highlights), or every zoom would highlight the text twice.
+    /// Tall pastes are capped to the screen and scrolled inside the card.
+    private var maxTextHeight: CGFloat {
+        ((NSScreen.main?.visibleFrame.height ?? 900) * 0.72).rounded()
+    }
 
-        let textHeight = max(1, CGFloat(lines.count)) * lineHeight
-        let width = Self.padding * 2 + gutterWidth + contentWidth + 8
+    func documentSize(fontSize: CGFloat) -> NSSize {
+        let font = CodeStyle.font(size: fontSize)
+        let widest = lines.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        let content = min(Self.maxWidth, ceil(widest) + 16)
+        let digits = max(2, String(lines.count).count)
+        let gutter = ceil(("8" as NSString).size(withAttributes: [.font: font]).width) * CGFloat(digits) + 12
+        let fullHeight = max(1, CGFloat(lines.count)) * CodeStyle.lineHeight(size: fontSize)
+        let textHeight = min(fullHeight, maxTextHeight)
+        let width = Self.padding * 2 + gutter + content + 8
         let height = Self.padding * 2 + Self.titleHeight + textHeight + 6
         return NSSize(width: min(width, Self.maxWidth + 80), height: height)
+    }
+
+    @objc private func textDidScroll() {
+        needsDisplay = true
     }
 
     private func applyText() {
@@ -161,10 +190,14 @@ final class PinTextSurface: NSView {
     override func layout() {
         super.layout()
         let top = Self.padding + Self.titleHeight
-        textView.frame = NSRect(x: Self.padding + gutterWidth,
-                                y: top,
-                                width: max(40, bounds.width - Self.padding * 2 - gutterWidth),
-                                height: max(10, bounds.height - top - Self.padding))
+        let frame = NSRect(x: Self.padding + gutterWidth,
+                           y: top,
+                           width: max(40, bounds.width - Self.padding * 2 - gutterWidth),
+                           height: max(10, bounds.height - top - Self.padding))
+        scrollView.frame = frame
+        let contentWidth = max(40, frame.width - (scrollView.verticalScroller?.frame.width ?? 0))
+        let needed = max(frame.height, CGFloat(lines.count) * lineHeight + 4)
+        textView.frame = NSRect(x: 0, y: 0, width: contentWidth, height: needed)
     }
 
     // MARK: - Drawing
@@ -216,7 +249,9 @@ final class PinTextSurface: NSView {
             .font: font,
             .foregroundColor: CodeStyle.gutter
         ]
-        let textOrigin = textView.frame.origin
+        let clip = scrollView.contentView
+        let textOrigin = NSPoint(x: scrollView.frame.minX - clip.bounds.minX,
+                                 y: scrollView.frame.minY - clip.bounds.minY)
         let columnRight = Self.padding + gutterWidth - 12
         var character = 0
         for (index, line) in lines.enumerated() {
@@ -256,6 +291,11 @@ final class PinTextSurface: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        // ⌥ scrolls a long paste; a plain scroll still changes the type size.
+        if event.modifierFlags.contains(.option) {
+            scrollView.scrollWheel(with: event)
+            return
+        }
         onZoom?(event.scrollingDeltaY)
     }
 
@@ -263,7 +303,7 @@ final class PinTextSurface: NSView {
         let menu = NSMenu()
         let copy = ClosureMenuItem(title: "复制全部文字") { [weak self] in self?.onCopy?() }
         menu.addItem(copy)
-        let hint = NSMenuItem(title: "按住 ⌥ 拖动可选中文字", action: nil, keyEquivalent: "")
+        let hint = NSMenuItem(title: "按住 ⌥ 拖动可选中文字，⌥ 滚轮看全文", action: nil, keyEquivalent: "")
         hint.isEnabled = false
         menu.addItem(hint)
         menu.addItem(.separator())
