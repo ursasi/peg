@@ -469,7 +469,8 @@ final class ThumbView: NSView, NSDraggingSource {
     private var dragged = false
     private var pinsOnDrop = false
     private var dragStartScreen: CGPoint = .zero
-    private var cardCache: NSImage?
+    private var cardCache: CGImage?
+    private var isRenderingCache = false
     private var cacheSize: NSSize = .zero
     private var cacheHover = false
     private var cacheScale: CGFloat = 0
@@ -608,8 +609,17 @@ final class ThumbView: NSView, NSDraggingSource {
         // frame into one bitmap blit instead of a full redraw (thumbnail
         // scaling, shadow, text) for each card, twenty-four times a second.
         let scale = window?.backingScaleFactor ?? 2
-        if cardCache == nil || cacheSize != bounds.size || cacheHover != hovering || cacheScale != scale {
-            cardCache = renderCard(card: card, size: bounds.size, scale: scale)
+        let stale = cardCache == nil || cacheSize != bounds.size
+            || cacheHover != hovering || cacheScale != scale
+
+        if isRenderingCache {
+            // Collecting the cache: draw the sheet at rest, no rotation.
+            drawFrame(card)
+            drawPeg(at: CGPoint(x: card.midX, y: cardTop))
+            return
+        }
+        if stale {
+            cardCache = renderCard(size: bounds.size)
             cacheSize = bounds.size
             cacheHover = hovering
             cacheScale = scale
@@ -619,37 +629,31 @@ final class ThumbView: NSView, NSDraggingSource {
         context.translateBy(x: card.midX, y: cardTop + dropOffset)
         context.rotate(by: tilt + swing)
         context.translateBy(x: -card.midX, y: -cardTop)
-        cardCache?.draw(in: bounds)
+        if let cgImage = cardCache {
+            // The cached image comes from cacheDisplay, which renders in the
+            // view's flipped space; CGImage drawing here works in a y-up space,
+            // so mirror it around the middle.
+            context.translateBy(x: 0, y: bounds.midY)
+            context.scaleBy(x: 1, y: -1)
+            context.translateBy(x: 0, y: -bounds.midY)
+            context.interpolationQuality = .high
+            context.draw(cgImage, in: bounds)
+        } else {
+            drawFrame(card)
+            drawPeg(at: CGPoint(x: card.midX, y: cardTop))
+        }
         context.restoreGState()
     }
 
-    private func renderCard(card: CGRect, size: NSSize, scale: CGFloat) -> NSImage? {
-        let pixels = NSSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
-                                         pixelsWide: Int(pixels.width),
-                                         pixelsHigh: Int(pixels.height),
-                                         bitsPerSample: 8, samplesPerPixel: 4,
-                                         hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB,
-                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
-        rep.size = size
-        guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        // Bitmap contexts are not flipped; the view is. Without this the peg
-        // ends up under the sheet, because y=0 means the bottom here.
-        let flip = NSAffineTransform()
-        flip.translateX(by: 0, yBy: size.height)
-        flip.scaleX(by: 1, yBy: -1)
-        flip.concat()
-        // Paper first, peg on top: the jaws must visibly bite the sheet.
-        drawFrame(card)
-        drawPeg(at: CGPoint(x: card.midX, y: ShelfMetrics.pegHeight))
-        NSGraphicsContext.restoreGraphicsState()
-
-        let image = NSImage(size: size)
-        image.addRepresentation(rep)
-        return image
+    /// Uses AppKit's own view caching: it renders through the same path as an
+    /// on-screen draw, so flipped coordinates and the peg's position come out
+    /// right without hand-rolled transform gymnastics.
+    private func renderCard(size: NSSize) -> CGImage? {
+        guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        isRenderingCache = true
+        cacheDisplay(in: bounds, to: rep)
+        isRenderingCache = false
+        return rep.cgImage
     }
 
     /// A clothespin: a grip that widens at the top, a coil across the middle
