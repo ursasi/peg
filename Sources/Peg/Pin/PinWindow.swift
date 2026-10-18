@@ -84,9 +84,33 @@ final class PinController {
 
     /// Pin a file (used by the clothesline), at natural size, centred.
     func pinFile(at url: URL) {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return }
+        guard let image = imageFromFile(url) else { return }
         pinCentered(image, on: NSScreen.main)
+    }
+
+    /// Pin a file so its centre lands on a screen point, which is where the
+    /// pointer was when the drag ended.
+    func pinFile(at url: URL, centeredAt point: CGPoint) {
+        guard let image = imageFromFile(url),
+              let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main
+        else { return }
+        let scale = screen.backingScaleFactor
+        var size = NSSize(width: CGFloat(image.width) / scale,
+                          height: CGFloat(image.height) / scale)
+        let visible = screen.visibleFrame
+        let limit = NSSize(width: visible.width * 0.85, height: visible.height * 0.85)
+        let factor = min(1, min(limit.width / max(1, size.width), limit.height / max(1, size.height)))
+        size.width *= factor
+        size.height *= factor
+        var origin = CGPoint(x: point.x - size.width / 2, y: point.y - size.height / 2)
+        origin.x = min(max(visible.minX + 8, origin.x), visible.maxX - size.width - 8)
+        origin.y = min(max(visible.minY + 8, origin.y), visible.maxY - size.height - 8)
+        pin(image, at: CGRect(origin: origin, size: size))
+    }
+
+    private func imageFromFile(_ url: URL) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
 
     func pinCentered(_ image: CGImage, on screen: NSScreen?) {
@@ -329,4 +353,25 @@ final class ClosureMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError("not used") }
 
     @objc private func fire() { handler() }
+}
+
+/// Pasteboard type for "pin this where I let go". Nothing but Peg understands
+/// it, which is the point: Finder and chat apps decline the drop, so the
+/// dragging session ends without copying a file and Peg places the pin itself.
+final class PinDragItem: NSObject, NSPasteboardWriting {
+    static let type = NSPasteboard.PasteboardType("com.zhangshuohua.peg.pin")
+    let url: URL
+
+    init(url: URL) {
+        self.url = url
+        super.init()
+    }
+
+    func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        [Self.type]
+    }
+
+    func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        url.absoluteString
+    }
 }

@@ -475,6 +475,7 @@ final class ThumbView: NSView, NSDraggingSource {
         didSet { needsDisplay = true }
     }
     private var dragged = false
+    private var pinsOnDrop = false
     private var dropOffset: CGFloat = 0 {
         didSet { needsDisplay = true }
     }
@@ -812,7 +813,16 @@ final class ThumbView: NSView, NSDraggingSource {
     override func mouseDragged(with event: NSEvent) {
         dragged = true
         cancelPreview()
-        let draggingItem = NSDraggingItem(pasteboardWriter: item.url as NSURL)
+        // Plain drag hands the file to whoever accepts it (chat, Finder,
+        // mail). Holding ⌥ asks Peg to pin the shot where you let go instead —
+        // the drop target cannot make that distinction for us, because Finder
+        // accepts file URLs and would copy the file before we ever heard about
+        // it.
+        pinsOnDrop = event.modifierFlags.contains(.option)
+        let writer: NSPasteboardWriting = pinsOnDrop
+            ? PinDragItem(url: item.url)
+            : (item.url as NSURL)
+        let draggingItem = NSDraggingItem(pasteboardWriter: writer)
         draggingItem.setDraggingFrame(bounds, contents: item.thumb)
         beginDraggingSession(with: [draggingItem], event: event, source: self)
     }
@@ -820,6 +830,14 @@ final class ThumbView: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession,
                          sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         .copy
+    }
+
+    func draggingSession(_ session: NSDraggingSession,
+                         endedAt screenPoint: NSPoint,
+                         operation: NSDragOperation) {
+        guard pinsOnDrop else { return }
+        pinsOnDrop = false
+        PinController.shared.pinFile(at: item.url, centeredAt: screenPoint)
     }
 
     override func rightMouseDown(with event: NSEvent) {
