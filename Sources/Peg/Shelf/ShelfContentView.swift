@@ -826,7 +826,13 @@ final class ThumbView: NSView, NSDraggingSource {
             : (item.url as NSURL)
         let draggingItem = NSDraggingItem(pasteboardWriter: writer)
         draggingItem.setDraggingFrame(bounds, contents: item.thumb)
-        beginDraggingSession(with: [draggingItem], event: event, source: self)
+        let session = beginDraggingSession(with: [draggingItem], event: event, source: self)
+        if pinsOnDrop {
+            // Nobody accepts the private type, and the default behaviour for a
+            // drag that ends "unaccepted" is to fly the thumbnail back to the
+            // shelf. The pin appearing is the result, so drop that animation.
+            session.animatesToStartingPositionsOnCancelOrFail = false
+        }
     }
 
     func draggingSession(_ session: NSDraggingSession,
