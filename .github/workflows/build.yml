@@ -10,6 +10,12 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      # Pin the toolchain: the runner's default (5.10) is stricter than current
+      # Swift about capturing self in concurrent closures, which made "passes
+      # locally, fails in CI" a recurring surprise.
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
       - name: Swift version
         run: swift --version
       - name: Build
