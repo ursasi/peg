@@ -28,12 +28,15 @@ fi
 cp "$COMPILED" "$BIN"
 
 # Generated icon: the mark lives in Tools/MakeIcon, not in a binary asset.
-swiftc -O Tools/Design/PegMark.swift Tools/MakeIcon/main.swift \
-    -o build/makeicon >/tmp/peg-icon.log 2>&1
-if [ -x build/makeicon ] && build/makeicon "$APP/Contents/Resources" >/dev/null 2>&1; then
+# The icon is generated at build time; a toolchain that cannot compile the
+# generator must not fail the whole build (CI has no signing identity either).
+if swiftc -O Tools/Design/PegMark.swift Tools/MakeIcon/main.swift \
+        -o build/makeicon >/tmp/peg-icon.log 2>&1 \
+   && build/makeicon "$APP/Contents/Resources" >>/tmp/peg-icon.log 2>&1; then
     echo "icon: generated"
 else
-    echo "icon: skipped (see Tools/MakeIcon/main.swift)"
+    echo "icon: skipped"
+    sed -n '1,10p' /tmp/peg-icon.log || true
 fi
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
