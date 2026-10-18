@@ -36,7 +36,7 @@ analytics, no auto-updater. Screen Recording is the only permission it asks for.
 | **Inline annotation** | 8 tools (rectangle, ellipse, arrow, pen, marker, text, mosaic, blur) drawn straight onto the frozen screen. What you draw is what you get. |
 | **Scroll capture** | Manually scroll a region; frames are aligned by row fingerprints and stitched, both downwards and upwards. |
 | **GIF recording** | Frame a region, record up to 20 s at 12 fps, stop with the same shortcut. A red frame shows exactly what is being recorded. |
-| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere, double-click to open. The clothesline idea comes from Tendedero. |
+| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere (⌥-drag to pin it where you drop), double-click to open. The clothesline idea comes from Tendedero. |
 | **Pins** | Any shot floats above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. Clipboard text pins too, as a dark code card with a line-number gutter and light syntax colouring; drag it as one piece, hold ⌥ to select inside. |
 | **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
 | **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon, and editable shortcuts. |
