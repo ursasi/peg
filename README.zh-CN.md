@@ -78,7 +78,21 @@ Peg 常驻菜单栏，做的都是日常截图的事：框一块区域或一个�
 
 ## 安装
 
-Peg 没有做公证，请自己编译：
+### 直接下载
+
+从 [Releases](https://github.com/ursasi/peg/releases) 下载 `Peg-0.5.0.zip`，解压后双击
+`install.command`：它会把 Peg 放进 `/Applications`、去掉隔离属性，然后打开。
+
+macOS 会拒绝运行未公证的 app 并提示"已损坏"——文件没坏，只是 Gatekeeper 不肯放行。
+如果你想手动做，把 `Peg.app` 拖进 `/Applications` 后执行：
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Peg.app
+```
+
+### 自己编译
+
+Peg 没有做公证，也可以自己编译：
 
 ```bash
 git clone https://github.com/ursasi/peg.git

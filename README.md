@@ -84,6 +84,22 @@ then the snip.
 
 ## Install
 
+### Download
+
+Grab `Peg-0.5.0.zip` from [Releases](https://github.com/ursasi/peg/releases), unzip it, and
+double-click `install.command`. It copies Peg into `/Applications`, clears the
+quarantine flag and opens it.
+
+macOS refuses to launch apps that are not notarised and calls them "damaged" —
+the file is fine, Gatekeeper just will not run it. If you prefer to do it by
+hand, drag `Peg.app` into `/Applications` and run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Peg.app
+```
+
+### Build
+
 Peg is not notarized. Build it yourself:
 
 ```bash
