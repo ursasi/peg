@@ -476,6 +476,7 @@ final class ThumbView: NSView, NSDraggingSource {
     }
     private var dragged = false
     private var pinsOnDrop = false
+    private var dragStartScreen: CGPoint = .zero
     private var dropOffset: CGFloat = 0 {
         didSet { needsDisplay = true }
     }
@@ -819,6 +820,7 @@ final class ThumbView: NSView, NSDraggingSource {
         // accepts file URLs and would copy the file before we ever heard about
         // it.
         pinsOnDrop = event.modifierFlags.contains(.option)
+        dragStartScreen = window?.convertPoint(toScreen: event.locationInWindow) ?? .zero
         let writer: NSPasteboardWriting = pinsOnDrop
             ? PinDragItem(url: item.url)
             : (item.url as NSURL)
@@ -837,6 +839,12 @@ final class ThumbView: NSView, NSDraggingSource {
                          operation: NSDragOperation) {
         guard pinsOnDrop else { return }
         pinsOnDrop = false
+        // Esc lands here with an empty operation and the pointer barely moved;
+        // that is a cancelled drag, not a request to pin.
+        let cancelled = operation.isEmpty
+            && hypot(screenPoint.x - dragStartScreen.x,
+                     screenPoint.y - dragStartScreen.y) < 12
+        if cancelled { return }
         PinController.shared.pinFile(at: item.url, centeredAt: screenPoint)
     }
 
