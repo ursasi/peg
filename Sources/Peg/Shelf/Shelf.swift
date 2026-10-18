@@ -54,7 +54,9 @@ final class Shelf {
     /// Polling the pointer position needs no permissions at all, unlike a
     /// global NSEvent monitor (which can be blocked or require Accessibility).
     private func startPointerPolling() {
-        let timer = Timer(timeInterval: 0.09, repeats: true) { [weak self] _ in
+        // 7 Hz is enough to catch a pointer reaching the menu bar, and the
+        // check has to run for the life of the app.
+        let timer = Timer(timeInterval: 0.14, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pointerMoved() }
         }
         RunLoop.main.add(timer, forMode: .common)
