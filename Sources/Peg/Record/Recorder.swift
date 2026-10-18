@@ -157,7 +157,7 @@ final class Recorder {
         }
     }
 
-    private static func writeGIF(_ frames: [CGImage], fps: Double) -> URL? {
+    private nonisolated static func writeGIF(_ frames: [CGImage], fps: Double) -> URL? {
         guard let url = gifURL() else { return nil }
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL,
                                                                UTType.gif.identifier as CFString,
@@ -176,14 +176,14 @@ final class Recorder {
         return url
     }
 
-    private static let stamp: DateFormatter = {
+    private nonisolated static let stamp: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         return formatter
     }()
 
-    private static func gifURL() -> URL? {
+    private nonisolated static func gifURL() -> URL? {
         let folder = Storage.folder
         var url = folder.appendingPathComponent("Peg \(stamp.string(from: Date())).gif")
         var counter = 2
