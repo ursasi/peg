@@ -120,10 +120,10 @@ final class PreviewContentView: NSView {
         needsDisplay = true
 
         guard GIFFile.isAnimated(url) else { return }
-        let frames = GIFFile.frames(url)
+        let (frames, delays) = GIFFile.cachedFrames(url)
         guard frames.count > 1 else { return }
         self.frames = frames
-        frameDelays = GIFFile.delays(url)
+        frameDelays = delays
         scheduleNextFrame()
     }
 

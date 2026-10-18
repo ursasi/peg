@@ -103,7 +103,7 @@ final class Recorder {
     }
 
     private func captureFrame() async {
-        guard isRecording, let filter, var configuration else { return }
+        guard isRecording, let filter, let configuration else { return }
         guard frames.count < maxFrames, bytes < maxBytes else {
             stop()
             return

@@ -172,10 +172,12 @@ final class ShelfContentView: NSView {
         // A line that slid away while the pointer was on a sheet must ripple
         // again when it comes back.
         wavePaused = false
-        let timer = Timer(timeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
+        // 12 fps is plenty for a rope that drifts a few points a second; the
+        // old 24 fps doubled the redraw cost for motion nobody could see.
+        let timer = Timer(timeInterval: 1.0 / 12.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, !self.wavePaused else { return }
-                ShelfContentView.wavePhase += 0.06
+                ShelfContentView.wavePhase += 0.12
                 self.ropeView?.needsDisplay = true
                 self.strip.needsLayout = true
             }
@@ -265,51 +267,41 @@ final class RopeView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let width = bounds.width
         guard width > 0 else { return }
+
+        // One path for the whole rope, stroked three times. The old version
+        // stroked ~200 separate segments with a fresh NSShadow each, which cost
+        // more than everything else on screen put together.
         let startX: CGFloat = -24
         let endX = width + 24
-        let steps = 200
-        let fadeSpan: CGFloat = 0.07
-
-        var previous = NSPoint(x: startX, y: ShelfContentView.ropeY(x: startX, width: width))
+        let steps = 160
+        let path = NSBezierPath()
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        path.move(to: NSPoint(x: startX, y: ShelfContentView.ropeY(x: startX, width: width)))
         for step in 1...steps {
-            let t = CGFloat(step) / CGFloat(steps)
-            let x = startX + (endX - startX) * t
-            let current = NSPoint(x: x, y: ShelfContentView.ropeY(x: x, width: width))
-            let alpha = min(1, min(t / fadeSpan, (1 - t) / fadeSpan))
-            stroke(from: previous, to: current, alpha: alpha)
-            previous = current
+            let x = startX + (endX - startX) * CGFloat(step) / CGFloat(steps)
+            path.line(to: NSPoint(x: x, y: ShelfContentView.ropeY(x: x, width: width)))
         }
-    }
 
-    /// One segment: dark underlay for the shadow, mid grey core, white highlight.
-    private func stroke(from: NSPoint, to: NSPoint, alpha: CGFloat) {
-        guard alpha > 0.01 else { return }
+        // A dark underlay instead of an NSShadow: a blur pass per frame was the
+        // most expensive thing in the animation, and at 2pt the difference is
+        // invisible.
+        path.lineWidth = 3.0
+        NSColor.black.withAlphaComponent(0.34).setStroke()
+        path.stroke()
 
-        let shadow = NSShadow()
-        shadow.shadowColor = NSColor.black.withAlphaComponent(0.4 * alpha)
-        shadow.shadowBlurRadius = 2.5
-        shadow.shadowOffset = NSSize(width: 0, height: 1.5)
-        shadow.set()
+        // Core.
+        path.lineWidth = 2.0
+        NSColor(white: 0.58, alpha: 0.95).setStroke()
+        path.stroke()
 
-        let core = NSBezierPath()
-        core.move(to: from)
-        core.line(to: to)
-        core.lineWidth = 2.8
-        NSColor.black.withAlphaComponent(0.30 * alpha).setStroke()
-        core.stroke()
-
-        NSShadow().set()
-
-        core.lineWidth = 2.0
-        NSColor(white: 0.58, alpha: 0.95 * alpha).setStroke()
-        core.stroke()
-
-        let highlight = NSBezierPath()
-        highlight.move(to: NSPoint(x: from.x, y: from.y - 0.7))
-        highlight.line(to: NSPoint(x: to.x, y: to.y - 0.7))
-        highlight.lineWidth = 0.6
-        NSColor.white.withAlphaComponent(0.6 * alpha).setStroke()
-        highlight.stroke()
+        // Highlight, nudged up by a hair.
+        if let highlight = path.copy() as? NSBezierPath {
+            highlight.transform(using: AffineTransform(translationByX: 0, byY: -0.7))
+            highlight.lineWidth = 0.6
+            NSColor.white.withAlphaComponent(0.55).setStroke()
+            highlight.stroke()
+        }
     }
 }
 
@@ -477,6 +469,10 @@ final class ThumbView: NSView, NSDraggingSource {
     private var dragged = false
     private var pinsOnDrop = false
     private var dragStartScreen: CGPoint = .zero
+    private var cardCache: NSImage?
+    private var cacheSize: NSSize = .zero
+    private var cacheHover = false
+    private var cacheScale: CGFloat = 0
     private var dropOffset: CGFloat = 0 {
         didSet { needsDisplay = true }
     }
@@ -607,17 +603,47 @@ final class ThumbView: NSView, NSDraggingSource {
                           width: bounds.width,
                           height: bounds.height - cardTop - ShelfMetrics.stampHeight)
 
-        // Rotate around the point where the peg holds the card.
+        // The sheet only changes when its size or hover state does; the rope
+        // animation just rotates it. Caching the drawing turns every animated
+        // frame into one bitmap blit instead of a full redraw (thumbnail
+        // scaling, shadow, text) for each card, twenty-four times a second.
+        let scale = window?.backingScaleFactor ?? 2
+        if cardCache == nil || cacheSize != bounds.size || cacheHover != hovering || cacheScale != scale {
+            cardCache = renderCard(card: card, size: bounds.size, scale: scale)
+            cacheSize = bounds.size
+            cacheHover = hovering
+            cacheScale = scale
+        }
+
         context.saveGState()
         context.translateBy(x: card.midX, y: cardTop + dropOffset)
         context.rotate(by: tilt + swing)
         context.translateBy(x: -card.midX, y: -cardTop)
+        cardCache?.draw(in: bounds)
+        context.restoreGState()
+    }
 
+    private func renderCard(card: CGRect, size: NSSize, scale: CGFloat) -> NSImage? {
+        let pixels = NSSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
+                                         pixelsWide: Int(pixels.width),
+                                         pixelsHigh: Int(pixels.height),
+                                         bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        rep.size = size
+        guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
         // Paper first, peg on top: the jaws must visibly bite the sheet.
         drawFrame(card)
-        drawPeg(at: CGPoint(x: card.midX, y: cardTop))
+        drawPeg(at: CGPoint(x: card.midX, y: ShelfMetrics.pegHeight))
+        NSGraphicsContext.restoreGraphicsState()
 
-        context.restoreGState()
+        let image = NSImage(size: size)
+        image.addRepresentation(rep)
+        return image
     }
 
     /// A clothespin: a grip that widens at the top, a coil across the middle
