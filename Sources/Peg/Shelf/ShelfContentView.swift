@@ -636,6 +636,12 @@ final class ThumbView: NSView, NSDraggingSource {
         guard let context = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
+        // Bitmap contexts are not flipped; the view is. Without this the peg
+        // ends up under the sheet, because y=0 means the bottom here.
+        let flip = NSAffineTransform()
+        flip.translateX(by: 0, yBy: size.height)
+        flip.scaleX(by: 1, yBy: -1)
+        flip.concat()
         // Paper first, peg on top: the jaws must visibly bite the sheet.
         drawFrame(card)
         drawPeg(at: CGPoint(x: card.midX, y: ShelfMetrics.pegHeight))
