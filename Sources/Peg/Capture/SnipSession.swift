@@ -75,22 +75,27 @@ final class SnipSession {
             ScrollSession.shared.finish()
             return
         }
-        begin(mode: mode)
+        begin(mode: mode, includeSelf: NSEvent.modifierFlags.contains(.shift))
     }
 
-    func begin(mode: Mode = .markup) {
+    /// `includeSelf` keeps Peg's own windows in the frozen frame, for shooting
+    /// the clothesline or a pin when reporting a problem with Peg itself.
+    func begin(mode: Mode = .markup, includeSelf: Bool = false) {
         guard !isActive else { return }
         guard Permissions.ensure() else { return }
         isActive = true
         self.mode = mode
-        DebugLog.log("snip begin mode=\(mode)")
-        Shelf.shared.hideNow(animated: false)
+        let keepSelf = includeSelf || Prefs.captureSelf
+        DebugLog.log("snip begin mode=\(mode) self=\(keepSelf)")
+        if !keepSelf {
+            Shelf.shared.hideNow(animated: false)
+        }
 
         Task { @MainActor in
             // Give the shelf a frame to slide out of the way before freezing.
-            try? await Task.sleep(nanoseconds: 70_000_000)
+            if !keepSelf { try? await Task.sleep(nanoseconds: 70_000_000) }
             do {
-                let shots = try await Capture.allDisplays()
+                let shots = try await Capture.allDisplays(includeSelf: keepSelf)
                 present(shots)
             } catch {
                 isActive = false

@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var shared: AppDelegate?
     private var statusItem: NSStatusItem?
     private var dockItem: NSMenuItem?
+    private var captureSelfItem: NSMenuItem?
     private var debugTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -270,6 +271,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(dock)
         dockItem = dock
 
+        let captureSelf = NSMenuItem(title: "截图包含 Peg 自己的窗口",
+                                     action: #selector(toggleCaptureSelf), keyEquivalent: "")
+        captureSelf.target = self
+        captureSelf.state = Prefs.captureSelf ? .on : .off
+        menu.addItem(captureSelf)
+        captureSelfItem = captureSelf
+
         let settings = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(settings)
 
@@ -328,6 +336,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleShelf() {
         Shelf.shared.toggle()
+    }
+
+    @objc private func toggleCaptureSelf() {
+        Prefs.captureSelf = !Prefs.captureSelf
+        refreshCaptureSelfItem()
+    }
+
+    /// The settings window can flip the same preference, so the tick mark is
+    /// refreshed from the stored value rather than toggled blind.
+    func refreshCaptureSelfItem() {
+        captureSelfItem?.state = Prefs.captureSelf ? .on : .off
     }
 
     @objc private func setLineSize(_ sender: NSMenuItem) {
