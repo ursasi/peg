@@ -8,11 +8,16 @@ final class PreviewPanel {
     private var panel: NSPanel?
     private var content: PreviewContentView?
     private var hideWork: DispatchWorkItem?
+    /// Bumped by every show and hide, so a hide that was already running when a
+    /// new preview arrives cannot order out the panel the show just put up.
+    private var generation = 0
 
     func show(_ url: URL, near rect: CGRect, on screen: NSScreen) {
         let still = Thumbnailer.make(url, maxPixel: 1600) ?? NSImage(contentsOf: url)
         guard let image = still else { return }
+        generation += 1
         hideWork?.cancel()
+        hideWork = nil
 
         let visible = screen.visibleFrame
         // Keep the preview small enough that the line above it stays visible:
@@ -62,17 +67,33 @@ final class PreviewPanel {
         }
     }
 
+    /// The pointer moved to another sheet: keep the panel up instead of letting
+    /// the hide that leaving the previous sheet scheduled run in between.
+    func cancelHide() {
+        hideWork?.cancel()
+        hideWork = nil
+    }
+
     func hide(after delay: TimeInterval = 0) {
         hideWork?.cancel()
         guard self.panel != nil else { return }
+        generation += 1
+        let token = generation
         let work = DispatchWorkItem { [weak self] in
             guard let self, let panel = self.panel else { return }
+            guard token == self.generation else { return }
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.12
                 context.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
-                MainActor.assumeIsolated { panel.orderOut(nil) }
+                MainActor.assumeIsolated {
+                    // A preview that arrived while the fade was running wins;
+                    // ordering the panel out here is what kept every sheet but
+                    // the first one from previewing when moving along the line.
+                    guard token == self.generation else { return }
+                    panel.orderOut(nil)
+                }
             })
         }
         hideWork = work

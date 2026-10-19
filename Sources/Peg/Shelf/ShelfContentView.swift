@@ -391,6 +391,9 @@ final class ThumbStrip: NSView {
             PreviewPanel.shared.hide(after: 0.14)
             return
         }
+        // Sheet-to-sheet moves fire an exit and an entry in one go; without
+        // this the exit's scheduled hide lands after the new preview is up.
+        PreviewPanel.shared.cancelHide()
         let work = DispatchWorkItem { [weak self, weak thumb] in
             guard let self, let thumb, self.hovered === thumb else { return }
             thumb.showPreviewNow()
