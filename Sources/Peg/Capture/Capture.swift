@@ -32,7 +32,12 @@ enum Capture {
     /// Captures every display at native pixel resolution. The result is a
     /// frozen frame, which is what the selection overlay draws on: no flicker,
     /// no overlay baked into the image, and the magnifier has real pixels.
-    static func allDisplays() async throws -> [CGDirectDisplayID: Shot] {
+    ///
+    /// Peg leaves its own windows out by default — the clothesline hangs under
+    /// the menu bar and would otherwise land in the middle of a shot. Pass
+    /// `includeSelf` to keep them, which is how the clothesline, a pin or the
+    /// settings window gets photographed when Peg itself needs describing.
+    static func allDisplays(includeSelf: Bool = false) async throws -> [CGDirectDisplayID: Shot] {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let myPID = ProcessInfo.processInfo.processIdentifier
         let myApp = content.applications.first { $0.processID == myPID }
@@ -43,7 +48,7 @@ enum Capture {
                 continue
             }
             let filter: SCContentFilter
-            if let myApp {
+            if let myApp, !includeSelf {
                 filter = SCContentFilter(display: display,
                                          excludingApplications: [myApp],
                                          exceptingWindows: [])

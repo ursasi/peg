@@ -91,6 +91,13 @@ enum Prefs {
         get { UserDefaults.standard.object(forKey: "autoCopy") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "autoCopy") }
     }
+
+    /// Keep Peg's own windows in the shot. Off by default so the clothesline,
+    /// the hover preview and pins stay out of ordinary captures.
+    static var captureSelf: Bool {
+        get { UserDefaults.standard.object(forKey: "captureSelf") as? Bool ?? false }
+        set { UserDefaults.standard.set(newValue, forKey: "captureSelf") }
+    }
 }
 
 /// A plain settings window: where shots go, what format, and clipboard habits.
@@ -108,6 +115,7 @@ final class SettingsWindow: NSWindowController {
     private let qualityLabel = NSTextField(labelWithString: "")
     private let copyCheck = NSButton(checkboxWithTitle: "截图后自动复制到剪贴板", target: nil, action: nil)
     private let roundCheck = NSButton(checkboxWithTitle: "截图四角改成圆角", target: nil, action: nil)
+    private let selfCheck = NSButton(checkboxWithTitle: "截图也拍下 Peg 自己的窗口", target: nil, action: nil)
     private var shortcutButtons: [ShortcutAction: ShortcutRecorderButton] = [:]
     private let retentionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
@@ -207,6 +215,8 @@ final class SettingsWindow: NSWindowController {
         copyCheck.action = #selector(copyChanged)
         roundCheck.target = self
         roundCheck.action = #selector(roundChanged)
+        selfCheck.target = self
+        selfCheck.action = #selector(selfChanged)
 
         // Shortcuts, one row per action.
         let shortcutTitle = NSTextField(labelWithString: "快捷键")
@@ -236,12 +246,12 @@ final class SettingsWindow: NSWindowController {
         resetRow.orientation = .horizontal
 
         let note = NSTextField(wrappingLabelWithString:
-            "标注时　1–8 选工具　⏎ 完成　P 贴到屏幕　L 长截图　Esc 取消")
+            "标注时　1–8 选工具　⏎ 完成　P 贴到屏幕　L 长截图　Esc 取消\n截图时按住 ⇧ 会连 Peg 自己的窗口一起拍下")
         note.font = .systemFont(ofSize: 11)
         note.textColor = .secondaryLabelColor
 
         for view in [folderTitle, folderRow, formatTitle, formatControl, qualityRow,
-                     historyTitle, retentionRow, clipTitle, copyCheck, roundCheck,
+                     historyTitle, retentionRow, clipTitle, copyCheck, roundCheck, selfCheck,
                      shortcutTitle] + shortcutRows + [resetRow, note] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -261,6 +271,7 @@ final class SettingsWindow: NSWindowController {
         copyCheck.state = Prefs.autoCopy ? .on : .off
         refreshShortcutTitles()
         roundCheck.state = Prefs.roundedCorners ? .on : .off
+        selfCheck.state = Prefs.captureSelf ? .on : .off
     }
 
     @objc private func chooseFolder() {
@@ -334,5 +345,10 @@ final class SettingsWindow: NSWindowController {
 
     @objc private func copyChanged() {
         Prefs.autoCopy = copyCheck.state == .on
+    }
+
+    @objc private func selfChanged() {
+        Prefs.captureSelf = selfCheck.state == .on
+        AppDelegate.shared?.refreshCaptureSelfItem()
     }
 }
