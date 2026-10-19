@@ -879,6 +879,10 @@ final class ThumbView: NSView, NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession,
                          endedAt screenPoint: NSPoint,
                          operation: NSDragOperation) {
+        // The drag session swallows the mouse-up, so `mouseUp` never runs and
+        // `dragged` would stay set, silently keeping this sheet's hover preview
+        // off until it is clicked again. Only `mouseDown` clears it otherwise.
+        dragged = false
         guard pinsOnDrop else { return }
         pinsOnDrop = false
         // Esc lands here with an empty operation and the pointer barely moved;
