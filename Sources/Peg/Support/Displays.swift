@@ -25,6 +25,22 @@ enum Displays {
         return NSScreen.screens.first { $0.frame.contains(p) } ?? NSScreen.main ?? NSScreen.screens.first
     }
 
+    /// The y of the menu bar's bottom edge on `screen`: the line the clothesline
+    /// hangs from, and the line the pointer has to reach to pull it down.
+    ///
+    /// `visibleFrame` usually carries that inset. With "Automatically hide and
+    /// show the menu bar" turned on, though, macOS reports the full screen
+    /// height, which would leave the last pixel row of the display as the only
+    /// way to summon the line — unreachable in practice. Reserve an ordinary
+    /// menu bar's height there instead, so the line drops just below the bar
+    /// that macOS reveals for the pointer resting at the top edge.
+    static func menuBarBottom(of screen: NSScreen) -> CGFloat {
+        let visible = screen.visibleFrame.maxY
+        if visible <= screen.frame.maxY - 1 { return visible }
+        let bar = NSStatusBar.system.thickness
+        return screen.frame.maxY - (bar > 0 ? bar : 24)
+    }
+
     /// AppKit global (origin bottom-left of the primary screen, y up) -> local,
     /// top-left-origin point inside a screen. Used when a selection has to be
     /// placed back on screen as a window.

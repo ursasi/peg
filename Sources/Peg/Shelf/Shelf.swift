@@ -161,7 +161,7 @@ final class Shelf {
         self.panel = panel
 
         // Hang below the menu bar, not over it.
-        let top = target.visibleFrame.maxY
+        let top = Displays.menuBarBottom(of: target)
         let shown = NSRect(x: target.frame.minX, y: top - height, width: target.frame.width, height: height)
 
         if isShown {
@@ -266,12 +266,16 @@ final class Shelf {
         }
         guard SnipSession.shared.isActive == false else { return }
 
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) else { return }
+        // `NSRect.contains` excludes maxY, so a pointer resting exactly on the
+        // top row of a display would match no screen at all.
+        guard let screen = NSScreen.screens.first(where: {
+            $0.frame.insetBy(dx: 0, dy: -1).contains(point)
+        }) else { return }
 
         if !isShown {
             // Anywhere in the menu bar pulls the line down (the same gesture
             // Tendedero uses), not just the last two pixels of the display.
-            if point.y >= screen.visibleFrame.maxY - 1 {
+            if point.y >= Displays.menuBarBottom(of: screen) - 1 {
                 reveal(on: screen)
             }
             return
