@@ -114,13 +114,10 @@ final class ShelfContentView: NSView {
         addSubview(header)
 
         hint.alignment = .right
-        hint.attributedStringValue = Self.text("⌃⌥X 截图　·　点图复制　·　悬浮预览　·　拖出去用　·　⌃⌥S 收起",
-                                               size: 10, alpha: 0.6)
         addSubview(hint)
 
-        emptyLabel.attributedStringValue = Self.text("按 ⌃⌥X 截一张，它就挂在这根线上",
-                                                     size: 12, alpha: 0.8)
         addSubview(emptyLabel)
+        refreshHints()
 
         scroll.drawsBackground = false
         scroll.hasHorizontalScroller = false
@@ -168,6 +165,9 @@ final class ShelfContentView: NSView {
 
     /// The rope only ripples while the line is on screen.
     func startWave() {
+        // The hints quote whatever the shortcuts are bound to right now, so a
+        // rebind in settings is picked up the next time the line drops.
+        refreshHints()
         guard waveTimer == nil else { return }
         // A line that slid away while the pointer was on a sheet must ripple
         // again when it comes back.
@@ -243,6 +243,17 @@ final class ShelfContentView: NSView {
         strip.setFrameSize(NSSize(width: max(strip.intrinsicContentSize.width, bounds.width),
                                   height: bounds.height))
         strip.needsLayout = true
+    }
+
+    /// The line used to advertise ⌃⌥X and ⌃⌥S in fixed text, which went stale as
+    /// soon as either shortcut was rebound.
+    func refreshHints() {
+        let snip = ShortcutStore.shortcut(for: .snip).display
+        let line = ShortcutStore.shortcut(for: .shelf).display
+        hint.attributedStringValue = Self.text("\(snip) 截图　·　点图复制　·　悬浮预览　·　拖出去用　·　\(line) 收起",
+                                               size: 10, alpha: 0.6)
+        emptyLabel.attributedStringValue = Self.text("按 \(snip) 截一张，它就挂在这根线上",
+                                                     size: 12, alpha: 0.8)
     }
 
     private static func text(_ string: String, size: CGFloat, alpha: CGFloat) -> NSAttributedString {
