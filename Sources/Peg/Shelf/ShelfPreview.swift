@@ -5,6 +5,9 @@ import AppKit
 final class PreviewPanel {
     static let shared = PreviewPanel()
 
+    /// Room around the picture for the shadow that replaces the old card.
+    static let padding: CGFloat = 12
+
     private var panel: NSPanel?
     private var content: PreviewContentView?
     private var hideWork: DispatchWorkItem?
@@ -24,8 +27,8 @@ final class PreviewPanel {
 
         // Fit inside the allowed box, never enlarged past 1:1.
         let factor = min(maxWidth / source.width, maxHeight / source.height, 1)
-        let size = NSSize(width: (source.width * factor).rounded() + 12,
-                          height: (source.height * factor).rounded() + 12)
+        let size = NSSize(width: (source.width * factor).rounded() + Self.padding * 2,
+                          height: (source.height * factor).rounded() + Self.padding * 2)
 
         // Below the card, or above it when there is no room.
         var origin = NSPoint(x: rect.midX - size.width / 2, y: rect.minY - size.height - 10)
@@ -91,7 +94,7 @@ final class PreviewPanel {
         panel.level = .floating
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -156,14 +159,6 @@ final class PreviewContentView: NSView {
     override var isFlipped: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
-        let rounded = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5),
-                                   xRadius: 10, yRadius: 10)
-        NSColor(calibratedWhite: 0.10, alpha: 0.96).setFill()
-        rounded.fill()
-        NSColor.white.withAlphaComponent(0.18).setStroke()
-        rounded.lineWidth = 1
-        rounded.stroke()
-
         let current: NSImage? = {
             if !frames.isEmpty, frameIndex < frames.count {
                 let frame = frames[frameIndex]
@@ -172,7 +167,7 @@ final class PreviewContentView: NSView {
             return image
         }()
         guard let image = current, image.size.width > 0, image.size.height > 0 else { return }
-        let box = bounds.insetBy(dx: 6, dy: 6)
+        let box = bounds.insetBy(dx: PreviewPanel.padding, dy: PreviewPanel.padding)
         let aspect = image.size.width / image.size.height
         var rect = box
         if box.width / box.height > aspect {
@@ -183,10 +178,18 @@ final class PreviewContentView: NSView {
             rect.origin.y = box.minY + (box.height - rect.height) / 2
         }
 
-        NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).addClip()
+        // Nothing is painted behind the picture. A screenshot with rounded
+        // corners carries its own transparency, and on a near-black card those
+        // corners read as black wedges; the card's edge read as a black frame
+        // around the whole preview. A shadow alone lifts the picture off what is
+        // behind it, the same way a pin does.
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
+        shadow.shadowBlurRadius = 12
+        shadow.shadowOffset = NSSize(width: 0, height: -2)
+        shadow.set()
         NSGraphicsContext.current?.imageInterpolation = .high
         image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
-        NSGraphicsContext.restoreGraphicsState()
+        NSShadow().set()
     }
 }
