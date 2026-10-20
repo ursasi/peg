@@ -52,6 +52,13 @@ final class SnipSession {
     private(set) var tool: AnnotationTool?
     var color: NSColor = .systemRed
     var lineWidth: CGFloat = 4
+    /// Type size for the next caption. Kept apart from `lineWidth` so switching
+    /// between the pen and the text tool does not drag the other value along.
+    var textSize: CGFloat = 26
+    /// Shown for a moment after `[` or `]` so the change is visible: the bar has
+    /// no room for a slider.
+    private(set) var sizeHUD: String?
+    private var sizeHUDWork: DispatchWorkItem?
 
     var isDrafting: Bool { draftShape != nil }
 
@@ -320,7 +327,7 @@ final class SnipSession {
         shape.start = point
         shape.end = point
         shape.text = trimmed
-        shape.fontSize = 26
+        shape.fontSize = textSize
         shapes.append(shape)
         redraw()
     }
@@ -497,9 +504,68 @@ final class SnipSession {
         case 37: // l
             beginScroll()
             return true
+        case 33: // [
+            adjustSize(-1)
+            return true
+        case 30: // ]
+            adjustSize(1)
+            return true
         default:
             return false
         }
+    }
+
+    /// `[` and `]` step the size of whatever the active tool draws: stroke width
+    /// for the drawing tools, type size for the text tool.
+    func adjustSize(_ direction: CGFloat) {
+        if tool == .text {
+            textSize = min(96, max(12, textSize + direction * 4))
+            showSizeHUD("字号 \(Int(textSize))")
+        } else {
+            lineWidth = min(24, max(1, lineWidth + direction))
+            showSizeHUD("粗细 \(Int(lineWidth))")
+        }
+    }
+
+    private func showSizeHUD(_ text: String) {
+        sizeHUD = text
+        sizeHUDWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.sizeHUD = nil
+                self?.redraw()
+            }
+        }
+        sizeHUDWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4, execute: work)
+        redraw()
+    }
+
+    // MARK: - Moving a caption
+
+    /// The text mark under `point`, newest first, in view points. Captions used
+    /// to be nailed down the moment they were placed.
+    func textShapeIndex(at point: CGPoint) -> Int? {
+        for (index, shape) in shapes.enumerated().reversed() where shape.tool == .text {
+            if textBounds(shape).insetBy(dx: -6, dy: -6).contains(point) { return index }
+        }
+        return nil
+    }
+
+    private func textBounds(_ shape: AnnotationShape) -> CGRect {
+        let font = NSFont.systemFont(ofSize: max(8, shape.fontSize), weight: .semibold)
+        let size = (shape.text as NSString).size(withAttributes: [.font: font])
+        return CGRect(x: shape.start.x, y: shape.start.y,
+                      width: max(8, size.width),
+                      height: max(shape.fontSize * 1.6, size.height))
+    }
+
+    func moveText(at index: Int, by delta: CGSize) {
+        guard index >= 0, index < shapes.count, shapes[index].tool == .text else { return }
+        shapes[index].start.x += delta.width
+        shapes[index].start.y += delta.height
+        shapes[index].end = shapes[index].start
+        redraw()
     }
 
     // MARK: - Commit

@@ -24,6 +24,9 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     private var consumedClick = false
     private var textField: NSTextField?
     private var textAnchor: CGPoint = .zero
+    /// Index of the caption being dragged, while one is being moved.
+    private var movingTextIndex: Int?
+    private var movingTextLast: CGPoint = .zero
     private var previewSources: (mosaic: CGImage?, blur: CGImage?)?
 
     init(shot: Shot, sampler: PixelSampler?) {
@@ -100,6 +103,14 @@ final class SelectionView: NSView, NSTextFieldDelegate {
                 perform(item.action)
                 return
             }
+            // With no tool up, a click on a placed caption picks it up instead
+            // of starting a new selection.
+            if session?.tool == nil, let index = session?.textShapeIndex(at: point) {
+                consumedClick = true
+                movingTextIndex = index
+                movingTextLast = point
+                return
+            }
             if let tool = session?.tool, selection.contains(point) {
                 if tool == .text {
                     consumedClick = true
@@ -127,6 +138,14 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     override func mouseDragged(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
+        if let index = movingTextIndex {
+            session?.moveText(at: index,
+                              by: CGSize(width: point.x - movingTextLast.x,
+                                         height: point.y - movingTextLast.y))
+            movingTextLast = point
+            needsDisplay = true
+            return
+        }
         if consumedClick { return }
         if session?.isDrafting == true {
             session?.updateShape(to: point)
@@ -140,6 +159,12 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
+        if movingTextIndex != nil {
+            movingTextIndex = nil
+            consumedClick = false
+            needsDisplay = true
+            return
+        }
         if consumedClick {
             consumedClick = false
             return
@@ -330,7 +355,10 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         // Keep the bar on screen. A selection that fills the display (a whole
         // window, say) leaves no room below *or* above, so fall back to sitting
         // inside the bottom edge of the selection instead of sliding off.
-        var origin = CGPoint(x: selection.minX, y: selection.maxY + 10)
+        // Centre the bar on the selection instead of hanging it off the left
+        // edge: with a wide selection the buttons landed nowhere near the part
+        // being annotated.
+        var origin = CGPoint(x: selection.midX - total / 2, y: selection.maxY + 10)
         if origin.y + height > bounds.maxY - 4 {
             origin.y = selection.minY - height - 10
         }
@@ -431,6 +459,10 @@ final class SelectionView: NSView, NSTextFieldDelegate {
 
     @objc private func commitText() {
         endText(commit: true)
+        // ⏎ in the caption finishes the snip, the same as ⏎ on the overlay
+        // itself: typing a note and then hunting for the tick with the mouse
+        // was the complaint, not the commit itself.
+        session?.commit(.copyAndSave)
     }
 
     private func endText(commit: Bool) {
@@ -447,10 +479,11 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     private func drawActionBar(for selection: CGRect) {
         guard selection.width > 24, selection.height > 24 else { return }
         let background = barBackground(for: selection)
+        let items = barItems(for: selection)
         NSColor(calibratedWhite: 0.10, alpha: 0.88).setFill()
         NSBezierPath(roundedRect: background, xRadius: 8, yRadius: 8).fill()
 
-        for (index, item) in barItems(for: selection).enumerated() {
+        for (index, item) in items.enumerated() {
             let isActive: Bool = {
                 if case .tool(let tool) = item.action { return session?.tool == tool }
                 return false
@@ -472,7 +505,6 @@ final class SelectionView: NSView, NSTextFieldDelegate {
         }
 
         // A hairline between the drawing tools and the commit actions.
-        let items = barItems(for: selection)
         if items.count > AnnotationTool.allCases.count {
             let boundary = items[AnnotationTool.allCases.count]
             let line = NSBezierPath()
@@ -482,6 +514,63 @@ final class SelectionView: NSView, NSTextFieldDelegate {
             NSColor.white.withAlphaComponent(0.14).setStroke()
             line.stroke()
         }
+
+        // An icon at 17 pt cannot say which tool it is — mosaic and blur read
+        // alike — so hovering names it, with the digit that selects it.
+        if barHover >= 0, barHover < items.count {
+            drawTooltip(for: items[barHover], bar: background)
+        }
+
+        // `[` / `]` changed a size: say which one and to what, where the eyes
+        // already are.
+        if let hud = session?.sizeHUD {
+            drawSizeHUD(hud, bar: background)
+        }
+    }
+
+    private func drawSizeHUD(_ label: String, bar: CGRect) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let text = label as NSString
+        let size = text.size(withAttributes: attributes)
+        let padding = NSSize(width: 9, height: 5)
+        let bubbleSize = NSSize(width: size.width + padding.width * 2,
+                                height: size.height + padding.height * 2)
+        var origin = CGPoint(x: bar.midX - bubbleSize.width / 2,
+                             y: bar.minY - bubbleSize.height - 6)
+        if origin.y < 4 { origin.y = bar.maxY + 6 }
+        let bubble = CGRect(origin: origin, size: bubbleSize)
+        accent.withAlphaComponent(0.95).setFill()
+        NSBezierPath(roundedRect: bubble, xRadius: 5, yRadius: 5).fill()
+        text.draw(at: CGPoint(x: bubble.minX + padding.width, y: bubble.minY + padding.height),
+                  withAttributes: attributes)
+    }
+
+    private func drawTooltip(for item: BarItem, bar: CGRect) {
+        var label = item.title
+        if case .tool(let tool) = item.action {
+            label += "　\(tool.rawValue + 1)"
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let text = label as NSString
+        let size = text.size(withAttributes: attributes)
+        let padding = NSSize(width: 8, height: 5)
+        let bubbleSize = NSSize(width: size.width + padding.width * 2,
+                                height: size.height + padding.height * 2)
+        var origin = CGPoint(x: item.rect.midX - bubbleSize.width / 2,
+                             y: bar.minY - bubbleSize.height - 6)
+        if origin.y < 4 { origin.y = bar.maxY + 6 }
+        origin.x = max(4, min(origin.x, bounds.maxX - bubbleSize.width - 4))
+        let bubble = CGRect(origin: origin, size: bubbleSize)
+        NSColor(calibratedWhite: 0.05, alpha: 0.95).setFill()
+        NSBezierPath(roundedRect: bubble, xRadius: 5, yRadius: 5).fill()
+        text.draw(at: CGPoint(x: bubble.minX + padding.width, y: bubble.minY + padding.height),
+                  withAttributes: attributes)
     }
 
     private func updateBarHover() {
