@@ -234,6 +234,9 @@ final class ShelfContentView: NSView {
         header.frame.origin = NSPoint(x: side, y: 4)
         hint.sizeToFit()
         hint.frame.origin = NSPoint(x: bounds.width - hint.frame.width - side, y: 5)
+        // The pill behind the hint is painted by this view, so it has to be
+        // redrawn whenever the label moves or changes length.
+        needsDisplay = true
         emptyLabel.sizeToFit()
         emptyLabel.frame.origin = NSPoint(
             x: bounds.midX - emptyLabel.frame.width / 2,
@@ -251,9 +254,20 @@ final class ShelfContentView: NSView {
         let snip = ShortcutStore.shortcut(for: .snip).display
         let line = ShortcutStore.shortcut(for: .shelf).display
         hint.attributedStringValue = Self.text("\(snip) 截图　·　点图复制　·　悬浮预览　·　拖出去用　·　\(line) 收起",
-                                               size: 10, alpha: 0.6)
+                                               size: 11, alpha: 0.95)
         emptyLabel.attributedStringValue = Self.text("按 \(snip) 截一张，它就挂在这根线上",
                                                      size: 12, alpha: 0.8)
+    }
+
+    /// The hint sits over whatever happens to be behind the line — menu bar
+    /// extras, a busy window — and plain white type disappeared against a light
+    /// background. It gets its own dark pill, drawn here so the label itself
+    /// still paints on top of it.
+    override func draw(_ dirtyRect: NSRect) {
+        guard !hint.isHidden, hint.frame.width > 0 else { return }
+        let pill = hint.frame.insetBy(dx: -9, dy: -4)
+        NSColor(calibratedWhite: 0.06, alpha: 0.72).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2).fill()
     }
 
     private static func text(_ string: String, size: CGFloat, alpha: CGFloat) -> NSAttributedString {
