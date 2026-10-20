@@ -19,6 +19,7 @@ final class SnipSession {
         case direct   // ⌃⌥X: release the mouse, it is already copied and saved
         case markup   // ⌃⌥A: tools appear, ⏎ when done
         case record   // ⌃⌥G: the region becomes a GIF recorder
+        case scroll   // ⌃⌥L: drag a region and the scroll capture starts
     }
 
     private(set) var isActive = false
@@ -382,6 +383,12 @@ final class SnipSession {
             Task { @MainActor in
                 await Recorder.shared.begin(region: rect, on: screen)
             }
+            return
+        }
+        // Long capture is a mode of its own now: dragging a region and letting
+        // go starts it, instead of selecting first and then remembering L.
+        if mode == .scroll, let rect = selection(on: screen), rect.width >= 16, rect.height >= 16 {
+            beginScroll()
             return
         }
         if mode == .direct, let rect = selection(on: screen), rect.width >= 8, rect.height >= 8 {

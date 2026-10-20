@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .snip: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .direct) } },
             .snipMarkup: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .markup) } },
             .record: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .record) } },
+            .scroll: { MainActor.assumeIsolated { SnipSession.shared.hotKeyPressed(mode: .scroll) } },
             .shelf: { MainActor.assumeIsolated { Shelf.shared.toggle() } },
             .history: { MainActor.assumeIsolated { HistoryWindow.shared.show() } },
             .pastePin: {
@@ -135,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "snip": SnipSession.shared.hotKeyPressed(mode: .direct)
         case "snipmarkup": SnipSession.shared.hotKeyPressed(mode: .markup)
         case "record": SnipSession.shared.hotKeyPressed(mode: .record)
+        case "longshot": SnipSession.shared.hotKeyPressed(mode: .scroll)
         case "history": HistoryWindow.shared.show()
         case "shelf": Shelf.shared.toggle()
         case "settings": SettingsWindow.shared.show()
@@ -241,6 +243,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         record.target = self
         menu.addItem(record)
 
+        let scroll = NSMenuItem(title: "长截图", action: #selector(scrollCapture), keyEquivalent: "")
+        scroll.target = self
+        menu.addItem(scroll)
+
         let shelf = NSMenuItem(title: "晾图绳", action: #selector(toggleShelf), keyEquivalent: "")
         shelf.target = self
         menu.addItem(shelf)
@@ -309,6 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (item, action) in [(snip, ShortcutAction.snip),
                                (snipMarkup, .snipMarkup),
                                (record, .record),
+                               (scroll, .scroll),
                                (shelf, .shelf),
                                (history, .history),
                                (pastePin, .pastePin)] {
@@ -332,6 +339,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func recordMovie() {
         SnipSession.shared.hotKeyPressed(mode: .record)
+    }
+
+    @objc private func scrollCapture() {
+        SnipSession.shared.hotKeyPressed(mode: .scroll)
     }
 
     @objc private func toggleShelf() {
