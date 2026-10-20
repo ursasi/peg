@@ -117,10 +117,14 @@ final class SelectionView: NSView, NSTextFieldDelegate {
                 needsDisplay = true
                 return
             }
-            if let tool = session?.tool, selection.contains(point) {
+            // A tool owns the click wherever it lands. Requiring it inside the
+            // selection meant a click just outside started a whole new selection
+            // instead of placing a caption. Esc leaves the tool when the
+            // selection itself needs changing.
+            if let tool = session?.tool {
                 if tool == .text {
                     consumedClick = true
-                    beginText(at: point)
+                    beginText(at: clamped(point, into: selection))
                 } else {
                     session?.beginShape(at: point)
                 }
@@ -186,6 +190,26 @@ final class SelectionView: NSView, NSTextFieldDelegate {
 
     override func rightMouseDown(with event: NSEvent) {
         session?.cancel()
+    }
+
+    /// A caption clicked outside the selection is pulled inside it: text drawn
+    /// past the crop would never reach the saved image.
+    private func clamped(_ point: CGPoint, into rect: CGRect) -> CGPoint {
+        CGPoint(x: min(max(point.x, rect.minX + 4), max(rect.minX + 4, rect.maxX - 40)),
+                y: min(max(point.y, rect.minY + 4), max(rect.minY + 4, rect.maxY - 30)))
+    }
+
+    /// The wheel sizes the active tool: no round trip to the bar for every
+    /// step of the stroke.
+    override func scrollWheel(with event: NSEvent) {
+        guard session?.mode == .markup, session?.tool != nil else {
+            super.scrollWheel(with: event)
+            return
+        }
+        let delta = event.scrollingDeltaY
+        guard delta != 0 else { return }
+        session?.adjustSize(delta > 0 ? 1 : -1)
+        needsDisplay = true
     }
 
     override func keyDown(with event: NSEvent) {
