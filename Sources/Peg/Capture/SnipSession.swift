@@ -52,6 +52,9 @@ final class SnipSession {
     private(set) var tool: AnnotationTool?
     var color: NSColor = .systemRed
     var lineWidth: CGFloat = 4
+    /// Type size for the next caption. Kept apart from `lineWidth` so switching
+    /// between the pen and the text tool does not drag the other value along.
+    var textSize: CGFloat = 26
 
     var isDrafting: Bool { draftShape != nil }
 
@@ -320,7 +323,7 @@ final class SnipSession {
         shape.start = point
         shape.end = point
         shape.text = trimmed
-        shape.fontSize = 26
+        shape.fontSize = textSize
         shapes.append(shape)
         redraw()
     }
@@ -497,9 +500,60 @@ final class SnipSession {
         case 37: // l
             beginScroll()
             return true
+        case 33: // [
+            adjustSize(-1)
+            return true
+        case 30: // ]
+            adjustSize(1)
+            return true
         default:
             return false
         }
+    }
+
+    /// `[` and `]` step the size of whatever the active tool draws: stroke width
+    /// for the drawing tools, type size for the text tool.
+    func adjustSize(_ direction: CGFloat) {
+        if tool == .text {
+            textSize = min(96, max(12, textSize + direction * 4))
+        } else {
+            lineWidth = min(24, max(1, lineWidth + direction))
+        }
+        redraw()
+    }
+
+    // MARK: - Moving a caption
+
+    /// The text mark under `point`, newest first, in view points. Captions used
+    /// to be nailed down the moment they were placed.
+    func textShapeIndex(at point: CGPoint) -> Int? {
+        for (index, shape) in shapes.enumerated().reversed() where shape.tool == .text {
+            if textBounds(shape).insetBy(dx: -6, dy: -6).contains(point) { return index }
+        }
+        return nil
+    }
+
+    private func textBounds(_ shape: AnnotationShape) -> CGRect {
+        let font = NSFont.systemFont(ofSize: max(8, shape.fontSize), weight: .semibold)
+        let size = (shape.text as NSString).size(withAttributes: [.font: font])
+        return CGRect(x: shape.start.x, y: shape.start.y,
+                      width: max(8, size.width),
+                      height: max(shape.fontSize * 1.6, size.height))
+    }
+
+    /// Bounds of the caption at `index`, in view points: the overlay outlines it
+    /// so that a placed caption reads as something that can be picked up.
+    func textRect(at index: Int) -> CGRect? {
+        guard index >= 0, index < shapes.count, shapes[index].tool == .text else { return nil }
+        return textBounds(shapes[index])
+    }
+
+    func moveText(at index: Int, by delta: CGSize) {
+        guard index >= 0, index < shapes.count, shapes[index].tool == .text else { return }
+        shapes[index].start.x += delta.width
+        shapes[index].start.y += delta.height
+        shapes[index].end = shapes[index].start
+        redraw()
     }
 
     // MARK: - Commit
