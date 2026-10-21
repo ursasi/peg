@@ -7,6 +7,7 @@ enum ShortcutAction: String, CaseIterable {
     case snip
     case snipMarkup
     case record
+    case scroll
     case shelf
     case history
     case pastePin
@@ -16,6 +17,7 @@ enum ShortcutAction: String, CaseIterable {
         case .snip: return "截图"
         case .snipMarkup: return "截图并标注"
         case .record: return "录制 GIF"
+        case .scroll: return "长截图"
         case .shelf: return "晾图绳"
         case .history: return "截图历史"
         case .pastePin: return "贴到屏幕"
@@ -29,6 +31,7 @@ enum ShortcutAction: String, CaseIterable {
         case .snip: return Shortcut(keyCode: UInt32(kVK_ANSI_X), modifiers: Shortcut.defaultModifiers)
         case .snipMarkup: return Shortcut(keyCode: UInt32(kVK_ANSI_A), modifiers: Shortcut.defaultModifiers)
         case .record: return Shortcut(keyCode: UInt32(kVK_ANSI_G), modifiers: Shortcut.defaultModifiers)
+        case .scroll: return Shortcut(keyCode: UInt32(kVK_ANSI_L), modifiers: Shortcut.defaultModifiers)
         case .shelf: return Shortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: Shortcut.defaultModifiers)
         case .history: return Shortcut(keyCode: UInt32(kVK_ANSI_H), modifiers: Shortcut.defaultModifiers)
         case .pastePin: return Shortcut(keyCode: UInt32(kVK_ANSI_V), modifiers: Shortcut.defaultModifiers)
