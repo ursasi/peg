@@ -24,8 +24,9 @@ region or a window, mark it up, keep it floating, stitch a long page, record a
 short GIF. Recent shots hang on a line under the menu bar — a clothesline,
 borrowed from the idea in [Tendedero](https://github.com/mrthomaswebb/tendedero).
 
-Built with AppKit only. Free to use and modify, no account, no network, no
-analytics, no auto-updater. Screen Recording is the only permission it asks for.
+Built with AppKit only. Free to use and modify, no account, no analytics, no
+background network traffic. Screen Recording is the only permission it asks for.
+The one thing that goes online is 检查更新 in the menu, and only when you ask.
 
 ## Features
 
@@ -74,21 +75,30 @@ syntax colouring; copied images become pins that float above other windows.
 | `⌃⌥X` | Snip and save — release the mouse and it is already copied and written to disk |
 | `⌃⌥A` | Snip and annotate — the tool bar appears under the selection |
 | `⌃⌥G` | Record a GIF — frame a region, press again to stop |
+| `⌃⌥L` | Long capture — frame a region and scroll; the frames are stitched |
 | `⌃⌥V` | Pin: press once for the most recent copy, again to walk back through recent copies and then the shots on disk (images as pictures, text as code cards); stops repeating the same picture |
 | `⌃⌥H` | Screenshot history |
 | `⌃⌥S` | Show / hide the clothesline |
 
+Hold `⇧` with a snip to keep Peg's own windows in the frame — the clothesline, a
+pin, the settings window — which is how you photograph Peg itself. Or tick
+「截图包含 Peg 自己的窗口」 in the menu to keep it on.
+
 While sniffing a region: `1`–`8` pick a tool, `⌘Z` undoes, `⏎` commits,
 `P` pins the selection, `L` starts a scroll capture, `Esc` leaves the tool and
-then the snip.
+then the snip. With a tool up, the wheel sizes it (`[` and `]` do the same), a
+placed caption can be dragged, and ⏎ in a caption finishes the snip.
 
 ## Install
 
 ### Download
 
-Grab `Peg-0.5.0.zip` from [Releases](https://github.com/ursasi/peg/releases), unzip it, and
+Grab `Peg-0.6.0.zip` from [Releases](https://github.com/ursasi/peg/releases), unzip it, and
 double-click `install.command`. It copies Peg into `/Applications`, clears the
 quarantine flag and opens it.
+
+After that, 检查更新… in the menu looks for a newer release and installs it in
+place, so this download is only needed for the first install.
 
 macOS refuses to launch apps that are not notarised and calls them "damaged" —
 the file is fine, Gatekeeper just will not run it. If you prefer to do it by
