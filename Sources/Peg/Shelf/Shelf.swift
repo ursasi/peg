@@ -147,8 +147,16 @@ final class Shelf {
         if isShown { hideNow() } else { reveal() }
     }
 
+    /// A fresh capture: drop the line, then hang the sheet on it. The sheet used
+    /// to fall while the panel was still sliding in, so the gesture was over
+    /// before there was anything to see.
     func flash() {
+        let wasShown = isShown
         reveal(autoHideAfter: 1.8)
+        guard !wasShown else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            MainActor.assumeIsolated { self?.content?.dropInNewest() }
+        }
     }
 
     func reveal(on screen: NSScreen? = nil, autoHideAfter seconds: TimeInterval? = nil) {
