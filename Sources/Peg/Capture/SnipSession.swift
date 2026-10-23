@@ -50,6 +50,10 @@ final class SnipSession {
     /// what you were looking at.
     private(set) var shapes: [AnnotationShape] = []
     private var draftShape: AnnotationShape?
+    /// The mark drawn most recently. A size change right after drawing applies
+    /// to it as well as to the next one: the mark on screen is the only way to
+    /// judge what the number means.
+    private var lastDrawnIndex: Int?
     private(set) var tool: AnnotationTool?
     var color: NSColor = .systemRed
     var lineWidth: CGFloat = 4
@@ -277,6 +281,7 @@ final class SnipSession {
             draftShape = nil
         } else if !shapes.isEmpty {
             shapes.removeLast()
+            if let last = lastDrawnIndex, last >= shapes.count { lastDrawnIndex = nil }
         }
         redraw()
     }
@@ -312,7 +317,10 @@ final class SnipSession {
     func endShape() {
         guard let shape = draftShape else { return }
         draftShape = nil
-        if !shape.isDegenerate { shapes.append(shape) }
+        if !shape.isDegenerate {
+            shapes.append(shape)
+            lastDrawnIndex = shapes.count - 1
+        }
         DebugLog.log("endShape tool=\(shape.tool) degenerate=\(shape.isDegenerate) count=\(shapes.count) rect=\(shape.rect)")
         redraw()
     }
@@ -326,6 +334,7 @@ final class SnipSession {
         shape.text = trimmed
         shape.fontSize = textSize
         shapes.append(shape)
+        lastDrawnIndex = shapes.count - 1
         redraw()
     }
 
@@ -521,10 +530,21 @@ final class SnipSession {
     /// `[` and `]` step the size of whatever the active tool draws: stroke width
     /// for the drawing tools, type size for the text tool.
     func adjustSize(_ direction: CGFloat) {
+        let before = (textSize, lineWidth)
         if tool == .text {
             textSize = min(96, max(12, textSize + direction * 4))
         } else {
             lineWidth = min(24, max(1, lineWidth + direction))
+        }
+        guard (textSize, lineWidth) != before else { return }
+        // Follow the mark just drawn, but only one of the same tool: having a
+        // rect resize because the text tool's number went up would be wrong.
+        if let index = lastDrawnIndex, index < shapes.count, shapes[index].tool == tool {
+            if shapes[index].tool == .text {
+                shapes[index].fontSize = textSize
+            } else {
+                shapes[index].lineWidth = lineWidth
+            }
         }
         redraw()
     }
