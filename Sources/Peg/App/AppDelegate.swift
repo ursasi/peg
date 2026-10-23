@@ -148,6 +148,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "dock":
             toggleDock()
+        case "updatecheck":
+            Updater.shared.check(interactive: false)
+        case "updatedryrun":
+            Updater.shared.dryRun()
         case "closepins":
             PinController.shared.closeAll()
         case "pin":
@@ -305,6 +309,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         relaunch.target = self
         menu.addItem(relaunch)
 
+        let update = NSMenuItem(title: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: "")
+        update.target = self
+        menu.addItem(update)
+
         let quit = NSMenuItem(title: "退出 Peg", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -347,6 +355,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleShelf() {
         Shelf.shared.toggle()
+    }
+
+    @objc private func checkForUpdates() {
+        Updater.shared.check(interactive: true)
     }
 
     @objc private func toggleCaptureSelf() {
