@@ -15,9 +15,7 @@ final class PreviewPanel {
     /// new preview arrives cannot order out the panel the show just put up.
     private var generation = 0
 
-    func show(_ url: URL, near rect: CGRect, on screen: NSScreen) {
-        let still = Thumbnailer.make(url, maxPixel: 1600) ?? NSImage(contentsOf: url)
-        guard let image = still else { return }
+    func show(_ image: NSImage, url: URL, near rect: CGRect, on screen: NSScreen) {
         generation += 1
         hideWork?.cancel()
         hideWork = nil

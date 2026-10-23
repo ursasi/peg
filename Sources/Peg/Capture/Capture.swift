@@ -38,48 +38,73 @@ enum Capture {
     /// `includeSelf` to keep them, which is how the clothesline, a pin or the
     /// settings window gets photographed when Peg itself needs describing.
     static func allDisplays(includeSelf: Bool = false) async throws -> [CGDirectDisplayID: Shot] {
+        let t0 = CFAbsoluteTimeGetCurrent()
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1" {
+            NSLog("Peg timing content=%.0f ms", (CFAbsoluteTimeGetCurrent() - t0) * 1000)
+        }
         let myPID = ProcessInfo.processInfo.processIdentifier
         let myApp = content.applications.first { $0.processID == myPID }
 
-        var shots: [CGDirectDisplayID: Shot] = [:]
-        for display in content.displays {
-            guard let screen = NSScreen.screens.first(where: { Displays.id(of: $0) == display.displayID }) else {
-                continue
+        // Each display is its own ScreenCaptureKit round trip; taking them one
+        // after another made a two-display setup wait twice for no reason.
+        let shots = try await withThrowingTaskGroup(of: Shot.self) { group in
+            for display in content.displays {
+                guard let screen = NSScreen.screens.first(where: { Displays.id(of: $0) == display.displayID }) else {
+                    continue
+                }
+                group.addTask {
+                    try await capture(display: display, screen: screen,
+                                      myApp: myApp, includeSelf: includeSelf)
+                }
             }
-            let filter: SCContentFilter
-            if let myApp, !includeSelf {
-                filter = SCContentFilter(display: display,
-                                         excludingApplications: [myApp],
-                                         exceptingWindows: [])
-            } else {
-                filter = SCContentFilter(display: display, excludingWindows: [])
-            }
-
-            // SCDisplay reports points, not pixels: on a scaled Retina mode
-            // that would give a soft 1x capture. The display mode knows the
-            // real backing resolution.
-            let mode = CGDisplayCopyDisplayMode(display.displayID)
-            let config = SCStreamConfiguration()
-            config.width = mode?.pixelWidth ?? display.width
-            config.height = mode?.pixelHeight ?? display.height
-            config.showsCursor = false
-            config.scalesToFit = false
-            config.captureResolution = .best
-
-            let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-            if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1" {
-                NSLog("Peg display=%u scDisplay=%dx%d screen=%.0fx%.0f backing=%.2f cgPixels=%dx%d image=%dx%d",
-                      display.displayID, display.width, display.height,
-                      screen.frame.width, screen.frame.height, screen.backingScaleFactor,
-                      CGDisplayPixelsWide(display.displayID), CGDisplayPixelsHigh(display.displayID),
-                      image.width, image.height)
-            }
-            guard image.width > 0, image.height > 0 else { throw CaptureError.emptyFrame }
-            shots[display.displayID] = Shot(displayID: display.displayID, screen: screen, image: image)
+            var shots: [CGDirectDisplayID: Shot] = [:]
+            for try await shot in group { shots[shot.displayID] = shot }
+            return shots
         }
 
         guard !shots.isEmpty else { throw CaptureError.noDisplays }
         return shots
+    }
+
+    /// One display, at native pixel resolution.
+    private static func capture(display: SCDisplay,
+                                screen: NSScreen,
+                                myApp: SCRunningApplication?,
+                                includeSelf: Bool) async throws -> Shot {
+        let filter: SCContentFilter
+        if let myApp, !includeSelf {
+            filter = SCContentFilter(display: display,
+                                     excludingApplications: [myApp],
+                                     exceptingWindows: [])
+        } else {
+            filter = SCContentFilter(display: display, excludingWindows: [])
+        }
+
+        // SCDisplay reports points, not pixels: on a scaled Retina mode that
+        // would give a soft 1x capture. The display mode knows the real backing
+        // resolution.
+        let mode = CGDisplayCopyDisplayMode(display.displayID)
+        let config = SCStreamConfiguration()
+        config.width = mode?.pixelWidth ?? display.width
+        config.height = mode?.pixelHeight ?? display.height
+        config.showsCursor = false
+        config.scalesToFit = false
+        config.captureResolution = .best
+
+        let t1 = CFAbsoluteTimeGetCurrent()
+        let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+        if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1" {
+            NSLog("Peg timing capture display=%u %.0f ms", display.displayID, (CFAbsoluteTimeGetCurrent() - t1) * 1000)
+        }
+        if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1" {
+            NSLog("Peg display=%u scDisplay=%dx%d screen=%.0fx%.0f backing=%.2f cgPixels=%dx%d image=%dx%d",
+                  display.displayID, display.width, display.height,
+                  screen.frame.width, screen.frame.height, screen.backingScaleFactor,
+                  CGDisplayPixelsWide(display.displayID), CGDisplayPixelsHigh(display.displayID),
+                  image.width, image.height)
+        }
+        guard image.width > 0, image.height > 0 else { throw CaptureError.emptyFrame }
+        return Shot(displayID: display.displayID, screen: screen, image: image)
     }
 }

@@ -84,7 +84,30 @@ enum Storage {
 }
 
 enum Thumbnailer {
+    /// Decoding is the expensive half of both the line and the hover preview —
+    /// a 5K capture costs ~190 ms every time it is decoded — so results are
+    /// kept, keyed by path, size and modification date.
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 160
+        return cache
+    }()
+
+    private static func key(_ url: URL, _ maxPixel: Int) -> NSString {
+        let stamp = (try? url.resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate)?.timeIntervalSince1970 ?? 0
+        return "\(url.path)|\(maxPixel)|\(stamp)" as NSString
+    }
+
     static func make(_ url: URL, maxPixel: Int = 560) -> NSImage? {
+        let key = key(url, maxPixel)
+        if let hit = cache.object(forKey: key) { return hit }
+        let image = decode(url, maxPixel: maxPixel)
+        if let image { cache.setObject(image, forKey: key) }
+        return image
+    }
+
+    private static func decode(_ url: URL, maxPixel: Int) -> NSImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
