@@ -294,7 +294,7 @@ final class RecordBorder: NSPanel {
                             y: screen.frame.maxY - region.maxY,
                             width: region.width,
                             height: region.height)
-        super.init(contentRect: appKit.insetBy(dx: -3, dy: -3),
+        super.init(contentRect: appKit.insetBy(dx: -10, dy: -10),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered,
                    defer: false)
@@ -316,20 +316,53 @@ final class RecordBorder: NSPanel {
 }
 
 private final class RecordBorderView: NSView {
+    private var phase: CGFloat = 0
+    private var march: Timer?
+
     override var isFlipped: Bool { true }
 
-    override func draw(_ dirtyRect: NSRect) {
-        let rect = bounds.insetBy(dx: 1.5, dy: 1.5)
-        let path = NSBezierPath(rect: rect)
-        path.lineWidth = 3
-        path.lineJoinStyle = .round
-        NSColor.systemRed.withAlphaComponent(0.92).setStroke()
-        path.stroke()
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        march?.invalidate()
+        march = nil
+        guard window != nil else { return }
+        // One slow-moving part is enough to say "recording"; it replaced a hard
+        // 3 pt red box.
+        let timer = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.phase += 0.9
+                self.needsDisplay = true
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        march = timer
+    }
 
-        // Inner hairline so the frame reads on light and dark backgrounds.
-        let inner = NSBezierPath(rect: rect.insetBy(dx: 1.5, dy: 1.5))
-        inner.lineWidth = 1
-        NSColor.black.withAlphaComponent(0.25).setStroke()
-        inner.stroke()
+    deinit { march?.invalidate() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let frame = bounds.insetBy(dx: 9, dy: 9)
+        guard frame.width > 0, frame.height > 0 else { return }
+        let outline = NSBezierPath(roundedRect: frame, xRadius: 12, yRadius: 12)
+
+        // A soft halo rather than a hard stroke: it reads as the edge of the
+        // recording instead of a red rectangle laid over the window.
+        let glow = NSShadow()
+        glow.shadowColor = NSColor.systemRed.withAlphaComponent(0.45)
+        glow.shadowBlurRadius = 9
+        glow.set()
+        outline.lineWidth = 2
+        NSColor.systemRed.withAlphaComponent(0.85).setStroke()
+        outline.stroke()
+        NSShadow().set()
+
+        // Marching hairline inside it.
+        let marching = NSBezierPath(roundedRect: frame.insetBy(dx: 2.5, dy: 2.5),
+                                    xRadius: 10, yRadius: 10)
+        marching.setLineDash([7, 6], count: 2, phase: phase)
+        marching.lineWidth = 1.5
+        NSColor.white.withAlphaComponent(0.6).setStroke()
+        marching.stroke()
     }
 }
