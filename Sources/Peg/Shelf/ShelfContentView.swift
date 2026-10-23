@@ -154,6 +154,11 @@ final class ShelfContentView: NSView {
 
     override var isFlipped: Bool { true }
 
+    /// Hangs the newest sheet on the line; called once the line is on screen.
+    func dropInNewest() {
+        strip.dropInNewest()
+    }
+
     func setItems(_ items: [ShotItem]) {
         strip.setItems(items)
         emptyLabel.isHidden = !items.isEmpty
@@ -383,7 +388,10 @@ final class ThumbStrip: NSView {
             view.onPin = { [weak self] in self?.onPin?(item) }
             view.strip = self
             addSubview(view)
-            if !previous.isEmpty, !previous.contains(item.url) {
+            // With the line off screen the fall would happen where nobody can
+            // see it; `flash()` asks for it again once the panel is up.
+            if !previous.isEmpty, !previous.contains(item.url),
+               host?.window?.isVisible == true {
                 view.dropIn()
             }
             return view
@@ -425,6 +433,11 @@ final class ThumbStrip: NSView {
         }
         previewWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+    }
+
+    /// Drops the newest sheet onto the rope (the last one in layout order).
+    func dropInNewest() {
+        thumbs.last?.dropIn()
     }
 
     /// Debug hook: pretend the pointer is on one card.
@@ -549,7 +562,7 @@ final class ThumbView: NSView, NSDraggingSource {
             guard let self else { timer.invalidate(); return }
             let progress = min(1, Date().timeIntervalSince(start) / 0.42)
             let remaining = (1 - progress) * (1 - progress)
-            self.dropOffset = -46 * remaining
+            self.dropOffset = -64 * remaining
             if progress >= 1 {
                 timer.invalidate()
                 self.dropTimer = nil
