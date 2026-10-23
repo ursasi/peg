@@ -22,6 +22,9 @@ final class Shelf {
 
     private var panel: NSPanel?
     private var isShown = false
+    /// Whether the line is on screen right now. A snip only has to wait for it
+    /// to slide away when it actually has something to slide away from.
+    var isVisible: Bool { isShown }
     private var hideWork: DispatchWorkItem?
     private var pollTimer: Timer?
     private var currentScreen: NSScreen?

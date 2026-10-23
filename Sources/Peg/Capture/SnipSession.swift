@@ -92,8 +92,10 @@ final class SnipSession {
         }
 
         Task { @MainActor in
-            // Give the shelf a frame to slide out of the way before freezing.
-            if !keepSelf { try? await Task.sleep(nanoseconds: 70_000_000) }
+            // Only wait for the line to slide away when it is actually up.
+            if !keepSelf, Shelf.shared.isVisible {
+                try? await Task.sleep(nanoseconds: 70_000_000)
+            }
             do {
                 let shots = try await Capture.allDisplays(includeSelf: keepSelf)
                 present(shots)

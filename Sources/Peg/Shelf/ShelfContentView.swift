@@ -606,7 +606,17 @@ final class ThumbView: NSView, NSDraggingSource {
         let onScreen = window.convertToScreen(convert(bounds, to: nil))
         let screen = window.screen ?? NSScreen.main
         guard let screen else { return }
-        PreviewPanel.shared.show(item.url, near: onScreen, on: screen)
+        let url = item.url
+        // Decoding on the main thread made the whole overlay hitch for the
+        // length of a 5K decode (~190 ms) every time the pointer crossed a
+        // sheet. The panel is presented once the picture is ready.
+        Task.detached(priority: .userInitiated) {
+            guard let image = Thumbnailer.make(url, maxPixel: 1600) else { return }
+            await MainActor.run { [weak self] in
+                guard let self, !self.dragged else { return }
+                PreviewPanel.shared.show(image, url: url, near: onScreen, on: screen)
+            }
+        }
     }
 
     // MARK: - Drawing
