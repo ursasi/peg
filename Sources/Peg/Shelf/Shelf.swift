@@ -54,9 +54,9 @@ final class Shelf {
     /// Polling the pointer position needs no permissions at all, unlike a
     /// global NSEvent monitor (which can be blocked or require Accessibility).
     private func startPointerPolling() {
-        // 7 Hz is enough to catch a pointer reaching the menu bar, and the
-        // check has to run for the life of the app.
-        let timer = Timer(timeInterval: 0.14, repeats: true) { [weak self] _ in
+        // 11 Hz: the dwell check needs a finer tick to feel immediate, and the
+        // work is a pointer read plus two comparisons.
+        let timer = Timer(timeInterval: 0.09, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.pointerMoved() }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -174,7 +174,7 @@ final class Shelf {
             panel.setFrame(shown.offsetBy(dx: 0, dy: 20), display: false)
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.16
+                context.duration = 0.12
                 context.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().alphaValue = 1
                 panel.animator().setFrame(shown, display: true)
@@ -273,9 +273,16 @@ final class Shelf {
         }) else { return }
 
         if !isShown {
-            // Anywhere in the menu bar pulls the line down (the same gesture
-            // Tendedero uses), not just the last two pixels of the display.
-            if point.y >= Displays.menuBarBottom(of: screen) - 1 {
+            // Only the very top edge of the display pulls the line down. That is
+            // where macOS puts the menu bar, so reaching it is deliberate;
+            // anywhere lower the pointer is usually on its way to click
+            // something else, and pulling the line down there was the misfire.
+            // When the bar is not set to hide itself it is always on screen, and
+            // then the whole bar counts.
+            let atTopEdge = point.y >= screen.frame.maxY - 2
+            let barIsDrawn = screen.visibleFrame.maxY < screen.frame.maxY - 1
+            let inDrawnBar = barIsDrawn && point.y >= Displays.menuBarBottom(of: screen) - 1
+            if atTopEdge || inDrawnBar {
                 reveal(on: screen)
             }
             return
