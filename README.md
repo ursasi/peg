@@ -101,7 +101,7 @@ size for the next one.
 
 ### Download
 
-Grab `Peg-0.6.0.zip` from [Releases](https://github.com/ursasi/peg/releases), unzip it, and
+Grab `Peg-0.6.1.zip` from [Releases](https://github.com/ursasi/peg/releases), unzip it, and
 double-click `install.command`. It copies Peg into `/Applications`, clears the
 quarantine flag and opens it.
 

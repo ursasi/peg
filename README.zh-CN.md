@@ -90,7 +90,7 @@ Peg 常驻菜单栏，做的都是日常截图的事：框一块区域或一个�
 
 ### 直接下载
 
-从 [Releases](https://github.com/ursasi/peg/releases) 下载 `Peg-0.6.0.zip`，解压后双击
+从 [Releases](https://github.com/ursasi/peg/releases) 下载 `Peg-0.6.1.zip`，解压后双击
 `install.command`：它会把 Peg 放进 `/Applications`、去掉隔离属性，然后打开。
 
 装好之后，菜单里的「检查更新…」会去 GitHub 看有没有新版本，可以直接下载并替换，
