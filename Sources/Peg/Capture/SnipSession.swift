@@ -264,6 +264,14 @@ final class SnipSession {
         activeScreen == nil || activeScreen === screen
     }
 
+    /// Replaces the selection from a rectangle in view points. Used by the
+    /// overlay's move and corner handles.
+    func setSelection(_ rect: CGRect) {
+        anchor = CGPoint(x: rect.minX, y: rect.minY)
+        current = CGPoint(x: rect.maxX, y: rect.maxY)
+        redraw()
+    }
+
     func selection(on screen: NSScreen) -> CGRect? {
         guard activeScreen === screen, let anchor, let current else { return nil }
         let rect = CGRect(x: min(anchor.x, current.x),

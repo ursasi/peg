@@ -34,6 +34,15 @@ final class SelectionView: NSView, NSTextViewDelegate {
     /// Index of an existing caption being re-edited.
     private var editingShape: Int?
     private var toast: String?
+    /// Which handle the current drag grabbed, if any. `nil` while nothing is
+    /// being moved or resized.
+    private enum Grab {
+        case move(CGRect)            // the selection as it was when the drag began
+        case resize(Corner, CGRect)  // the corner being dragged, and the original box
+    }
+    private enum Corner { case topLeft, topRight, bottomLeft, bottomRight }
+    private var grab: Grab?
+    private var grabStart: CGPoint = .zero
     private var toastWork: DispatchWorkItem?
     private var movingTextLast: CGPoint = .zero
     private var previewSources: (mosaic: CGImage?, blur: CGImage?)?
@@ -121,6 +130,23 @@ final class SelectionView: NSView, NSTextViewDelegate {
                 perform(item.action)
                 return
             }
+            // An existing box is adjusted, never replaced, by a press on a
+            // corner or inside it: a stray click used to throw the frame away
+            // and start a new one.
+            if let corner = corner(at: point, in: selection) {
+                grab = .resize(corner, selection)
+                grabStart = point
+                consumedClick = true
+                return
+            }
+            if selection.contains(point), session?.tool == nil,
+               session?.textShapeIndex(at: point) == nil,
+               session?.shapeIndex(at: point) == nil {
+                grab = .move(selection)
+                grabStart = point
+                consumedClick = true
+                return
+            }
             // Double click re-opens a caption for editing; a single click picks
             // it up (and selects it, so the size controls follow).
             if event.clickCount >= 2, let index = session?.textShapeIndex(at: point) {
@@ -180,6 +206,37 @@ final class SelectionView: NSView, NSTextViewDelegate {
     override func mouseDragged(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
+        if let grab {
+            let dx = point.x - grabStart.x
+            let dy = point.y - grabStart.y
+            switch grab {
+            case .move(let start):
+                let moved = start.offsetBy(dx: dx, dy: dy)
+                let limit = bounds
+                let x = min(max(moved.minX, limit.minX), limit.maxX - moved.width)
+                let y = min(max(moved.minY, limit.minY), limit.maxY - moved.height)
+                session?.setSelection(CGRect(x: x, y: y, width: moved.width, height: moved.height))
+            case .resize(let corner, let start):
+                var minX = start.minX, maxX = start.maxX
+                var minY = start.minY, maxY = start.maxY
+                switch corner {
+                case .topLeft:     minX = point.x; minY = point.y
+                case .topRight:    maxX = point.x; minY = point.y
+                case .bottomLeft:  minX = point.x; maxY = point.y
+                case .bottomRight: maxX = point.x; maxY = point.y
+                }
+                let minSize: CGFloat = 24
+                if maxX - minX < minSize {
+                    if corner == .topLeft || corner == .bottomLeft { minX = maxX - minSize } else { maxX = minX + minSize }
+                }
+                if maxY - minY < minSize {
+                    if corner == .topLeft || corner == .topRight { minY = maxY - minSize } else { maxY = minY + minSize }
+                }
+                session?.setSelection(CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY))
+            }
+            needsDisplay = true
+            return
+        }
         if let index = movingTextIndex {
             session?.moveText(at: index,
                               by: CGSize(width: point.x - movingTextLast.x,
@@ -201,6 +258,12 @@ final class SelectionView: NSView, NSTextViewDelegate {
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         cursor = point
+        if grab != nil {
+            grab = nil
+            consumedClick = false
+            needsDisplay = true
+            return
+        }
         if movingTextIndex != nil {
             movingTextIndex = nil
             consumedClick = false
@@ -317,6 +380,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
                 outline.stroke()
             }
             drawBorder(selection)
+            drawHandles(in: selection)
             drawSizeLabel(for: selection)
             if session?.mode == .markup {
                 drawActionBar(for: selection)
@@ -754,6 +818,34 @@ final class SelectionView: NSView, NSTextViewDelegate {
             return true
         default:
             return false
+        }
+    }
+
+    /// Corners are 12 pt targets even though they are drawn smaller.
+    private func corner(at point: CGPoint, in rect: CGRect) -> Corner? {
+        let handles: [(Corner, CGPoint)] = [
+            (.topLeft, CGPoint(x: rect.minX, y: rect.minY)),
+            (.topRight, CGPoint(x: rect.maxX, y: rect.minY)),
+            (.bottomLeft, CGPoint(x: rect.minX, y: rect.maxY)),
+            (.bottomRight, CGPoint(x: rect.maxX, y: rect.maxY))
+        ]
+        for (corner, centre) in handles {
+            if abs(point.x - centre.x) <= 12, abs(point.y - centre.y) <= 12 { return corner }
+        }
+        return nil
+    }
+
+    private func drawHandles(in rect: CGRect) {
+        for corner in [Corner.topLeft, .topRight, .bottomLeft, .bottomRight] {
+            let centre = CGPoint(x: corner == .topLeft || corner == .bottomLeft ? rect.minX : rect.maxX,
+                                 y: corner == .topLeft || corner == .topRight ? rect.minY : rect.maxY)
+            let box = CGRect(x: centre.x - 4, y: centre.y - 4, width: 8, height: 8)
+            NSColor.white.setFill()
+            NSBezierPath(roundedRect: box, xRadius: 2, yRadius: 2).fill()
+            accent.setStroke()
+            let edge = NSBezierPath(roundedRect: box, xRadius: 2, yRadius: 2)
+            edge.lineWidth = 1.5
+            edge.stroke()
         }
     }
 
