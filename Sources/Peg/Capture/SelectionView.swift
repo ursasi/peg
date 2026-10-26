@@ -23,11 +23,15 @@ final class SelectionView: NSView, NSTextViewDelegate {
     /// on its way up, or the release would reshuffle the rectangle.
     private var consumedClick = false
     private var textEditor: NSTextView?
+    /// Only for the debug channel, which cannot rely on the window being key.
+    var currentTextEditor: NSTextView? { textEditor }
     private var textAnchor: CGPoint = .zero
     /// Index of the caption being dragged, while one is being moved.
     private var movingTextIndex: Int?
     /// Caption under the pointer, shown as draggable.
     private var captionHover: Int?
+    /// Index of an existing caption being re-edited.
+    private var editingShape: Int?
     private var movingTextLast: CGPoint = .zero
     private var previewSources: (mosaic: CGImage?, blur: CGImage?)?
 
@@ -105,15 +109,30 @@ final class SelectionView: NSView, NSTextViewDelegate {
                 perform(item.action)
                 return
             }
-            // A click on a placed caption picks it up, whichever tool is up:
-            // captions are not editable, so moving is the only thing a click
-            // could sensibly do.
+            // Double click re-opens a caption for editing; a single click picks
+            // it up (and selects it, so the size controls follow).
+            if event.clickCount >= 2, let index = session?.textShapeIndex(at: point) {
+                commitPendingText()
+                consumedClick = true
+                session?.select(index)
+                editExistingText(at: index)
+                return
+            }
             if let index = session?.textShapeIndex(at: point) {
                 commitPendingText()
                 consumedClick = true
+                session?.select(index)
                 movingTextIndex = index
                 movingTextLast = point
                 captionHover = nil
+                needsDisplay = true
+                return
+            }
+            // Any other mark can be selected too: it is what the wheel sizes.
+            if let index = session?.shapeIndex(at: point) {
+                commitPendingText()
+                session?.select(index)
+                consumedClick = true
                 needsDisplay = true
                 return
             }
@@ -141,6 +160,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
             return
         }
 
+        session?.select(nil)
         session?.mouseDown(on: shot.screen, at: point)
         needsDisplay = true
     }
@@ -202,17 +222,36 @@ final class SelectionView: NSView, NSTextViewDelegate {
     /// The wheel sizes the active tool: no round trip to the bar for every
     /// step of the stroke.
     override func scrollWheel(with event: NSEvent) {
-        guard session?.mode == .markup, session?.tool != nil else {
+        guard session?.mode == .markup else {
             super.scrollWheel(with: event)
             return
         }
         let delta = event.scrollingDeltaY
         guard delta != 0 else { return }
+        if textEditor != nil {
+            // The box being typed is the current one, whatever else is drawn.
+            session?.adjustSize(delta > 0 ? 1 : -1)
+            if let size = session?.textSize {
+                textEditor?.font = .systemFont(ofSize: size, weight: .semibold)
+                growText()
+            }
+            needsDisplay = true
+            return
+        }
+        guard session?.tool != nil || session?.selectedShape != nil else {
+            super.scrollWheel(with: event)
+            return
+        }
         session?.adjustSize(delta > 0 ? 1 : -1)
         needsDisplay = true
     }
 
     override func keyDown(with event: NSEvent) {
+        if textEditor == nil, event.keyCode == 51 {   // ⌫ deletes the selected mark
+            session?.deleteSelected()
+            needsDisplay = true
+            return
+        }
         if session?.keyDown(event) == true { return }
         super.keyDown(with: event)
     }
@@ -246,6 +285,14 @@ final class SelectionView: NSView, NSTextViewDelegate {
             NSGraphicsContext.restoreGraphicsState()
 
             drawMarks(in: selection)
+            if let index = session?.selectedShape, editingShape == nil,
+               let rect = session?.bounds(of: index) {
+                let outline = NSBezierPath(rect: rect.insetBy(dx: -6, dy: -5))
+                outline.lineWidth = 1.2
+                outline.setLineDash([5, 3], count: 2, phase: 0)
+                NSColor.white.withAlphaComponent(0.9).setStroke()
+                outline.stroke()
+            }
             if let index = captionHover, let rect = session?.textRect(at: index) {
                 let outline = NSBezierPath(rect: rect.insetBy(dx: -5, dy: -4))
                 outline.lineWidth = 1
@@ -486,7 +533,16 @@ final class SelectionView: NSView, NSTextViewDelegate {
     /// A caption is edited in a real text view rather than a text field: a
     /// field is one line tall, so a line break or a wrapped line pushed its
     /// first line out of sight.
-    private func beginText(at point: CGPoint) {
+    /// Reopens a caption for editing, prefilled with what it says.
+    private func editExistingText(at index: Int) {
+        guard let shape = session?.shapes[index] else { return }
+        // The wheel inside the box should act on this caption's size.
+        session?.textSize = shape.fontSize
+        editingShape = index
+        beginText(at: shape.start, text: shape.text)
+    }
+
+    private func beginText(at point: CGPoint, text: String = "") {
         endText(commit: true)
         // The size control applies to the caption being typed too, otherwise the
         // box shows one size and the mark lands at another.
@@ -510,16 +566,32 @@ final class SelectionView: NSView, NSTextViewDelegate {
         view.isVerticallyResizable = true
         view.isHorizontallyResizable = false
         view.delegate = self
+        view.string = text
         addSubview(view)
         textAnchor = point
         textEditor = view
+        session?.isEditingCaption = true
+        // A brand-new caption has no mark yet, so nothing else may stay selected
+        // or the wheel would resize that instead of the box being typed.
+        if editingShape == nil { session?.select(nil) }
 
         // The overlay window is only orderFrontRegardless'd, so the very first
         // click can land on a window that is not key yet: entering the view
         // then silently fails and the user has to click again.
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        window?.makeFirstResponder(view)
+        // Same trap as the old text field: a window that is on screen but not
+        // key refuses the responder, and the first keystrokes go to the overlay
+        // instead of the caption.
+        if window?.makeFirstResponder(view) != true {
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, let view = self.textEditor else { return }
+                    self.window?.makeKeyAndOrderFront(nil)
+                    self.window?.makeFirstResponder(view)
+                }
+            }
+        }
         growText()
     }
 
@@ -540,8 +612,15 @@ final class SelectionView: NSView, NSTextViewDelegate {
         guard let view = textEditor else { return }
         let value = view.string
         textEditor = nil
+        session?.isEditingCaption = false
         view.removeFromSuperview()
-        if commit { session?.addText(value, at: textAnchor) }
+        if let index = editingShape {
+            // Re-editing: change that caption, or drop it if it was emptied.
+            if commit { session?.updateText(at: index, with: value) }
+            editingShape = nil
+        } else if commit {
+            session?.addText(value, at: textAnchor)
+        }
         window?.makeFirstResponder(self)
         needsDisplay = true
     }
@@ -564,7 +643,14 @@ final class SelectionView: NSView, NSTextViewDelegate {
     func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
-            // ⏎ finishes the whole snip; ⇧⏎ / ⌥⏎ is the line break.
+            // ⇧⏎ / ⌥⏎ is a line break; a bare ⏎ finishes the snip. AppKit sends
+            // both as `insertNewline` from a text view, so the modifiers decide.
+            let flags = NSApp.currentEvent?.modifierFlags ?? []
+            if flags.contains(.shift) || flags.contains(.option) {
+                textView.insertNewlineIgnoringFieldEditor(nil)
+                growText()
+                return true
+            }
             commitText()
             return true
         case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):

@@ -88,8 +88,10 @@ While sniffing a region: `R` `O` `A` `P` `H` `T` `M` `B` pick a tool (rect,
 ellipse, arrow, pen, highlighter, text, mosaic, blur), `⌘Z` undoes, `⏎` commits,
 `P` pins the selection, `L` starts a scroll capture, `Esc` leaves the tool and
 then the snip. With a tool up, the wheel sizes it (`[` and `]` do the same), a
-placed caption can be dragged, and ⏎ in a caption finishes the snip while
-⇧⏎ or ⌥⏎ starts a new line.
+placed caption can be dragged and double-clicked to change its words, and ⏎ in a
+caption finishes the snip while ⇧⏎ or ⌥⏎ starts a new line. The wheel sizes
+the selected mark, or the caption being typed; with nothing selected it sets the
+size for the next one.
 
 ## Install
 

@@ -50,10 +50,14 @@ final class SnipSession {
     /// what you were looking at.
     private(set) var shapes: [AnnotationShape] = []
     private var draftShape: AnnotationShape?
-    /// The mark drawn most recently. A size change right after drawing applies
-    /// to it as well as to the next one: the mark on screen is the only way to
-    /// judge what the number means.
-    private var lastDrawnIndex: Int?
+    /// The mark the size controls act on. A freshly drawn mark selects itself,
+    /// and clicking an older one selects that instead — so the wheel always
+    /// changes what the user is looking at, never whatever happened to be drawn
+    /// last.
+    private(set) var selectedShape: Int?
+    /// Set while a caption is being typed: the size controls belong to the box
+    /// on screen, not to a mark behind it.
+    var isEditingCaption = false
     private(set) var tool: AnnotationTool?
     var color: NSColor = .systemRed
     var lineWidth: CGFloat = 4
@@ -283,7 +287,51 @@ final class SnipSession {
             draftShape = nil
         } else if !shapes.isEmpty {
             shapes.removeLast()
-            if let last = lastDrawnIndex, last >= shapes.count { lastDrawnIndex = nil }
+            if let selected = selectedShape, selected >= shapes.count { selectedShape = nil }
+        }
+        redraw()
+    }
+
+    /// Which mark sits under `point`, newest first.
+    func shapeIndex(at point: CGPoint) -> Int? {
+        for (index, shape) in shapes.enumerated().reversed() {
+            let hit = shape.tool == .text
+                ? textBounds(shape).insetBy(dx: -6, dy: -6)
+                : shape.rect.insetBy(dx: -6, dy: -6)
+            if hit.contains(point) { return index }
+        }
+        return nil
+    }
+
+    /// Bounds of a mark, for the outline that shows what the size controls will
+    /// change.
+    func bounds(of index: Int) -> CGRect? {
+        guard index >= 0, index < shapes.count else { return nil }
+        let shape = shapes[index]
+        return shape.tool == .text ? textBounds(shape) : shape.rect
+    }
+
+    func select(_ index: Int?) {
+        selectedShape = index
+        redraw()
+    }
+
+    func deleteSelected() {
+        guard let index = selectedShape, index < shapes.count else { return }
+        shapes.remove(at: index)
+        selectedShape = nil
+        redraw()
+    }
+
+    func updateText(at index: Int, with text: String) {
+        guard index >= 0, index < shapes.count else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            shapes.remove(at: index)
+            selectedShape = nil
+        } else {
+            shapes[index].text = trimmed
+            selectedShape = index
         }
         redraw()
     }
@@ -321,7 +369,8 @@ final class SnipSession {
         draftShape = nil
         if !shape.isDegenerate {
             shapes.append(shape)
-            lastDrawnIndex = shapes.count - 1
+            // What was just drawn is what the size controls should move.
+            selectedShape = shapes.count - 1
         }
         DebugLog.log("endShape tool=\(shape.tool) degenerate=\(shape.isDegenerate) count=\(shapes.count) rect=\(shape.rect)")
         redraw()
@@ -336,7 +385,7 @@ final class SnipSession {
         shape.text = trimmed
         shape.fontSize = textSize
         shapes.append(shape)
-        lastDrawnIndex = shapes.count - 1
+        selectedShape = shapes.count - 1
         redraw()
     }
 
@@ -473,6 +522,13 @@ final class SnipSession {
     }
 
     func debugType(_ text: String) {
+        // Prefer the open caption: when another app holds focus the window is
+        // not key, and the field editor path below would find nothing.
+        if let editor = windows.compactMap({ ($0.contentView as? SelectionView)?.currentTextEditor }).first {
+            editor.insertText(text, replacementRange: editor.selectedRange())
+            DebugLog.log("debugType into caption")
+            return
+        }
         guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return }
         DebugLog.log("debugType responder=\(String(describing: window.firstResponder))")
         if let editor = window.firstResponder as? NSTextView {
@@ -538,22 +594,25 @@ final class SnipSession {
 
     /// `[` and `]` step the size of whatever the active tool draws: stroke width
     /// for the drawing tools, type size for the text tool.
+    /// Steps the size of the selected mark; with nothing selected it steps the
+    /// value the next mark will use. A caption being typed always counts as
+    /// selected, because that is the box the user is looking at.
     func adjustSize(_ direction: CGFloat) {
-        let before = (textSize, lineWidth)
+        if let index = selectedShape, index < shapes.count {
+            if shapes[index].tool == .text {
+                textSize = min(96, max(12, textSize + direction * 4))
+                shapes[index].fontSize = textSize
+            } else {
+                lineWidth = min(24, max(1, lineWidth + direction))
+                shapes[index].lineWidth = lineWidth
+            }
+            redraw()
+            return
+        }
         if tool == .text {
             textSize = min(96, max(12, textSize + direction * 4))
         } else {
             lineWidth = min(24, max(1, lineWidth + direction))
-        }
-        guard (textSize, lineWidth) != before else { return }
-        // Follow the mark just drawn, but only one of the same tool: having a
-        // rect resize because the text tool's number went up would be wrong.
-        if let index = lastDrawnIndex, index < shapes.count, shapes[index].tool == tool {
-            if shapes[index].tool == .text {
-                shapes[index].fontSize = textSize
-            } else {
-                shapes[index].lineWidth = lineWidth
-            }
         }
         redraw()
     }
