@@ -4,12 +4,13 @@ import AppKit
 /// a live rectangle, corner handles, pixel size, and a magnifier that reads the
 /// real pixels underneath.
 final class SelectionView: NSView, NSTextViewDelegate {
-    let shot: Shot
-    private let sampler: PixelSampler?
+    private(set) var shot: Shot
+    private var sampler: PixelSampler?
     weak var session: SnipSession?
 
-    private lazy var frozen = NSImage(cgImage: shot.image,
-                                      size: NSSize(width: shot.image.width, height: shot.image.height))
+    private lazy var frozen = makeFrozen()
+    private func makeFrozen() -> NSImage { NSImage(cgImage: shot.image,
+                                  size: NSSize(width: shot.image.width, height: shot.image.height)) }
     private var cursor: CGPoint?
     /// Set only by the demo mode, which has no real pointer to follow.
     var demoCursor: CGPoint?
@@ -45,6 +46,15 @@ final class SelectionView: NSView, NSTextViewDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Swaps in another frozen frame — the replay history walks through older
+    /// captures on the same display.
+    func replaceShot(_ newShot: Shot, sampler newSampler: PixelSampler?) {
+        shot = newShot
+        sampler = newSampler
+        frozen = makeFrozen()
+        needsDisplay = true
+    }
 
     // MARK: - View plumbing
 

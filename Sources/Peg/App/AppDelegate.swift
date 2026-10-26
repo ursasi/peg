@@ -174,6 +174,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case _ where debugCommand.hasPrefix("key:"):
             if let code = UInt16(debugCommand.dropFirst("key:".count)) { SnipSession.shared.debugKey(code) }
+        case "history:prev": SnipSession.shared.historyStep(older: true)
+        case "history:next": SnipSession.shared.historyStep(older: false)
         case _ where debugCommand.hasPrefix("multitext:"):
             SnipSession.shared.debugAddText(String(debugCommand.dropFirst("multitext:".count)))
         case _ where debugCommand.hasPrefix("type:"):

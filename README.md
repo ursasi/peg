@@ -78,6 +78,7 @@ syntax colouring; copied images become pins that float above other windows.
 | `⌃⌥L` | Long capture — frame a region and scroll; the frames are stitched |
 | `⌃⌥V` | Pin: press once for the most recent copy, again to walk back through recent copies and then the shots on disk (images as pictures, text as code cards); stops repeating the same picture |
 | `⌃⌥H` | Screenshot history |
+| `,` `.` | Inside a snip: walk back / forward through recent captures — the frame, the selection and the marks come back, ready to edit |
 | `⌃⌥S` | Show / hide the clothesline |
 
 Hold `⇧` with a snip to keep Peg's own windows in the frame — the clothesline, a

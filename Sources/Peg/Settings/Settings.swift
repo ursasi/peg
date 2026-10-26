@@ -92,6 +92,16 @@ enum Prefs {
         set { UserDefaults.standard.set(newValue, forKey: "autoCopy") }
     }
 
+    /// How many frozen frames the replay history keeps. A fixed count: the
+    /// oldest is dropped when a new one arrives.
+    static var sessionLimit: Int {
+        get {
+            let stored = UserDefaults.standard.integer(forKey: "sessionLimit")
+            return stored == 10 || stored == 30 || stored == 50 ? stored : 30
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "sessionLimit") }
+    }
+
     /// Keep Peg's own windows in the shot. Off by default so the clothesline,
     /// the hover preview and pins stay out of ordinary captures.
     static var captureSelf: Bool {
@@ -118,6 +128,7 @@ final class SettingsWindow: NSWindowController {
     private let selfCheck = NSButton(checkboxWithTitle: "截图也拍下 Peg 自己的窗口", target: nil, action: nil)
     private var shortcutButtons: [ShortcutAction: ShortcutRecorderButton] = [:]
     private let retentionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let replayPopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 812),
@@ -198,6 +209,14 @@ final class SettingsWindow: NSWindowController {
         // History retention.
         let historyTitle = NSTextField(labelWithString: "历史保留")
         historyTitle.font = .systemFont(ofSize: 12, weight: .semibold)
+        replayPopup.addItems(withTitles: ["10 张", "30 张", "50 张"])
+        replayPopup.target = self
+        replayPopup.action = #selector(replayChanged)
+        let replayRow = NSStackView(views: [replayPopup,
+                                            NSTextField(labelWithString: "标注时可回看最近的截图（超出即删除）")])
+        replayRow.orientation = .horizontal
+        replayRow.spacing = 8
+
         retentionPopup.addItems(withTitles: ["7 天", "30 天", "90 天", "永久保留"])
         retentionPopup.target = self
         retentionPopup.action = #selector(retentionChanged)
@@ -251,7 +270,7 @@ final class SettingsWindow: NSWindowController {
         note.textColor = .secondaryLabelColor
 
         for view in [folderTitle, folderRow, formatTitle, formatControl, qualityRow,
-                     historyTitle, retentionRow, clipTitle, copyCheck, roundCheck, selfCheck,
+                     historyTitle, retentionRow, replayRow, clipTitle, copyCheck, roundCheck, selfCheck,
                      shortcutTitle] + shortcutRows + [resetRow, note] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
@@ -268,6 +287,7 @@ final class SettingsWindow: NSWindowController {
         qualityRow.isHidden = Prefs.format != .jpeg
         let days = Prefs.historyDays
         retentionPopup.selectItem(at: days == 0 ? 3 : days <= 7 ? 0 : days <= 30 ? 1 : 2)
+        replayPopup.selectItem(at: Prefs.sessionLimit == 10 ? 0 : Prefs.sessionLimit == 50 ? 2 : 1)
         copyCheck.state = Prefs.autoCopy ? .on : .off
         refreshShortcutTitles()
         roundCheck.state = Prefs.roundedCorners ? .on : .off
@@ -299,6 +319,12 @@ final class SettingsWindow: NSWindowController {
     @objc private func qualityChanged() {
         Prefs.quality = qualitySlider.doubleValue
         qualityLabel.stringValue = "\(Int((Prefs.quality * 100).rounded()))%"
+    }
+
+    @objc private func replayChanged() {
+        let values = [10, 30, 50]
+        Prefs.sessionLimit = values[max(0, min(2, replayPopup.indexOfSelectedItem))]
+        SessionStore.prune()
     }
 
     @objc private func retentionChanged() {
