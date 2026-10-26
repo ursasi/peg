@@ -84,10 +84,12 @@ Hold `⇧` with a snip to keep Peg's own windows in the frame — the clotheslin
 pin, the settings window — which is how you photograph Peg itself. Or tick
 「截图包含 Peg 自己的窗口」 in the menu to keep it on.
 
-While sniffing a region: `1`–`8` pick a tool, `⌘Z` undoes, `⏎` commits,
+While sniffing a region: `R` `O` `A` `P` `H` `T` `M` `B` pick a tool (rect,
+ellipse, arrow, pen, highlighter, text, mosaic, blur), `⌘Z` undoes, `⏎` commits,
 `P` pins the selection, `L` starts a scroll capture, `Esc` leaves the tool and
 then the snip. With a tool up, the wheel sizes it (`[` and `]` do the same), a
-placed caption can be dragged, and ⏎ in a caption finishes the snip.
+placed caption can be dragged, and ⏎ in a caption finishes the snip while
+⇧⏎ or ⌥⏎ starts a new line.
 
 ## Install
 

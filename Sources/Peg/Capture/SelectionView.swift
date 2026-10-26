@@ -3,7 +3,7 @@ import AppKit
 /// The frozen screen plus everything that makes a snip feel direct: dimming,
 /// a live rectangle, corner handles, pixel size, and a magnifier that reads the
 /// real pixels underneath.
-final class SelectionView: NSView, NSTextFieldDelegate {
+final class SelectionView: NSView, NSTextViewDelegate {
     let shot: Shot
     private let sampler: PixelSampler?
     weak var session: SnipSession?
@@ -22,7 +22,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     /// A click that hit the action bar must not also reach the selection logic
     /// on its way up, or the release would reshuffle the rectangle.
     private var consumedClick = false
-    private var textField: NSTextField?
+    private var textEditor: NSTextView?
     private var textAnchor: CGPoint = .zero
     /// Index of the caption being dragged, while one is being moved.
     private var movingTextIndex: Int?
@@ -60,7 +60,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     }
 
     private func takeFocus() {
-        guard let window, textField == nil else { return }
+        guard let window, textEditor == nil else { return }
         if !window.isKeyWindow { window.makeKey() }
         if window.firstResponder !== self {
             window.makeFirstResponder(self)
@@ -388,8 +388,13 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     /// actions. The size has to be visible: `[` and `]` on their own left the
     /// stroke width a guess.
     private func specs() -> [(symbol: String, title: String, action: BarAction, width: CGFloat, value: String?)] {
-        var all: [(String, String, BarAction, CGFloat, String?)] = Self.barSpec.map {
-            ($0.symbol, $0.title, $0.action, 34, nil)
+        var all: [(String, String, BarAction, CGFloat, String?)] = Self.barSpec.map { spec in
+            // The commit button says 完成 in words: a bare tick left people
+            // hunting for a ⏎ they had never been told about.
+            if case .copy = spec.action {
+                return (spec.symbol, "完成 ⏎ 或点这里", spec.action, 62, "完成")
+            }
+            return (spec.symbol, spec.title, spec.action, 34, nil)
         }
         let size: [(String, String, BarAction, CGFloat, String?)] = [
             ("minus", "变细 / 变小 [", .sizeStep(-1), 30, nil),
@@ -478,40 +483,44 @@ final class SelectionView: NSView, NSTextFieldDelegate {
 
     // MARK: - Inline text
 
+    /// A caption is edited in a real text view rather than a text field: a
+    /// field is one line tall, so a line break or a wrapped line pushed its
+    /// first line out of sight.
     private func beginText(at point: CGPoint) {
         endText(commit: true)
-        let size: CGFloat = 26
-        let width = min(max(80, bounds.width - point.x - 8), 420)
-        let field = NSTextField(frame: NSRect(x: point.x, y: point.y, width: width, height: size * 1.4))
-        field.isBordered = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.font = .systemFont(ofSize: size, weight: .semibold)
-        field.textColor = session?.color ?? .systemRed
-        field.delegate = self
-        field.target = self
-        field.action = #selector(commitText)
-        addSubview(field)
+        // The size control applies to the caption being typed too, otherwise the
+        // box shows one size and the mark lands at another.
+        let size = session?.textSize ?? 26
+        let width = min(max(120, bounds.width - point.x - 8), 460)
+        let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        let layout = NSLayoutManager()
+        layout.addTextContainer(container)
+        let storage = NSTextStorage()
+        storage.addLayoutManager(layout)
+
+        let view = NSTextView(frame: NSRect(x: point.x, y: point.y, width: width, height: size * 1.4),
+                              textContainer: container)
+        view.isRichText = false
+        view.drawsBackground = false
+        view.textContainerInset = .zero
+        view.font = .systemFont(ofSize: size, weight: .semibold)
+        view.textColor = session?.color ?? .systemRed
+        view.insertionPointColor = session?.color ?? .systemRed
+        view.isVerticallyResizable = true
+        view.isHorizontallyResizable = false
+        view.delegate = self
+        addSubview(view)
         textAnchor = point
-        textField = field
+        textEditor = view
 
         // The overlay window is only orderFrontRegardless'd, so the very first
-        // click can land on a window that is not key yet: entering the field
+        // click can land on a window that is not key yet: entering the view
         // then silently fails and the user has to click again.
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        let focused = window?.makeFirstResponder(field) ?? false
-        DebugLog.log("beginText focused=\(focused) responder=\(String(describing: window?.firstResponder)) key=\(window?.isKeyWindow ?? false)")
-        guard !focused else { return }
-        // Adding a field and focusing it in the same turn is unreliable; retry
-        // once the run loop has laid it out.
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self, let field = self.textField else { return }
-                let ok = self.window?.makeFirstResponder(field) ?? false
-                DebugLog.log("beginText retry focused=\(ok) responder=\(String(describing: self.window?.firstResponder))")
-            }
-        }
+        window?.makeFirstResponder(view)
+        growText()
     }
 
     /// Called by the session right before it crops: a half-typed caption must
@@ -523,20 +532,51 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     @objc private func commitText() {
         endText(commit: true)
         // ⏎ in the caption finishes the snip, the same as ⏎ on the overlay
-        // itself: typing a note and then hunting for the tick with the mouse
-        // was the complaint, not the commit itself.
+        // itself.
         session?.commit(.copyAndSave)
     }
 
     private func endText(commit: Bool) {
-        guard let field = textField else { return }
-        DebugLog.log("endText commit=\(commit)")
-        let value = field.stringValue
-        textField = nil
-        field.removeFromSuperview()
+        guard let view = textEditor else { return }
+        let value = view.string
+        textEditor = nil
+        view.removeFromSuperview()
         if commit { session?.addText(value, at: textAnchor) }
         window?.makeFirstResponder(self)
         needsDisplay = true
+    }
+
+    /// Keeps the editor tall enough for everything typed into it.
+    private func growText() {
+        guard let view = textEditor, let layout = view.layoutManager,
+              let container = view.textContainer else { return }
+        layout.ensureLayout(for: container)
+        let needed = max(view.font?.pointSize ?? 26, layout.usedRect(for: container).height)
+        guard abs(view.frame.height - needed) > 0.5 else { return }
+        view.frame.size.height = needed
+        needsDisplay = true
+    }
+
+    func textDidChange(_ notification: Notification) {
+        growText()
+    }
+
+    func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            // ⏎ finishes the whole snip; ⇧⏎ / ⌥⏎ is the line break.
+            commitText()
+            return true
+        case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
+            textView.insertNewlineIgnoringFieldEditor(nil)
+            growText()
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            endText(commit: false)
+            return true
+        default:
+            return false
+        }
     }
 
     private func drawActionBar(for selection: CGRect) {
@@ -597,7 +637,7 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     private func drawTooltip(for item: BarItem, bar: CGRect) {
         var label = item.title
         if case .tool(let tool) = item.action {
-            label += "　\(tool.rawValue + 1)"
+            label += "　\(tool.key.uppercased())"
         }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11, weight: .medium),
@@ -678,11 +718,11 @@ final class SelectionView: NSView, NSTextFieldDelegate {
     private func drawHint() {
         let text: String
         if session?.tool != nil {
-            text = "在选区内拖拽即可标注　⌘Z 撤销　Esc 回到选区"
+            text = "拖拽即可标注　⌘Z 撤销　Esc 回到选区　⇧⏎ 换行"
         } else if session?.mode == .direct {
             text = "拖拽选区，松开即复制并保存　L 滚动长截图　Esc 取消"
         } else {
-            text = "拖拽选区　1–8 选工具直接标注　⏎ 复制并保存　P 贴到屏幕\nL 滚动长截图　Esc 取消"
+            text = "拖拽选区　R/O/A/P/H/T/M/B 选工具　⏎ 复制并保存　P 贴到屏幕\nL 滚动长截图　Esc 取消"
         }
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
