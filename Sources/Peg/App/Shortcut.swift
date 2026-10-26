@@ -11,6 +11,9 @@ enum ShortcutAction: String, CaseIterable {
     case shelf
     case history
     case pastePin
+    /// Used inside a snip, not registered as a global hot key.
+    case historyPrevious
+    case historyNext
 
     var title: String {
         switch self {
@@ -21,6 +24,8 @@ enum ShortcutAction: String, CaseIterable {
         case .shelf: return "晾图绳"
         case .history: return "截图历史"
         case .pastePin: return "贴到屏幕"
+        case .historyPrevious: return "标注：上一张历史"
+        case .historyNext: return "标注：下一张历史"
 
         }
     }
@@ -35,6 +40,9 @@ enum ShortcutAction: String, CaseIterable {
         case .shelf: return Shortcut(keyCode: UInt32(kVK_ANSI_S), modifiers: Shortcut.defaultModifiers)
         case .history: return Shortcut(keyCode: UInt32(kVK_ANSI_H), modifiers: Shortcut.defaultModifiers)
         case .pastePin: return Shortcut(keyCode: UInt32(kVK_ANSI_V), modifiers: Shortcut.defaultModifiers)
+        // Plain keys: they only act while a snip overlay is up.
+        case .historyPrevious: return Shortcut(keyCode: UInt32(kVK_ANSI_Comma), modifiers: 0)
+        case .historyNext: return Shortcut(keyCode: UInt32(kVK_ANSI_Period), modifiers: 0)
         }
     }
 }

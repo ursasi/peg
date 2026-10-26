@@ -50,6 +50,14 @@ final class SnipSession {
     /// what you were looking at.
     private(set) var shapes: [AnnotationShape] = []
     private var draftShape: AnnotationShape?
+    /// Replay history: older captures on this display, newest first. `-1` is
+    /// the live frame the snip started from.
+    private var historyEntries: [SessionStore.Entry] = []
+    private var historyIndex: Int = -1
+    private var liveShot: Shot?
+    /// The live capture's own selection, put back when the history walks forward
+    /// past the newest entry.
+    private var liveSelection: (CGPoint, CGPoint)?
     /// The mark the size controls act on. A freshly drawn mark selects itself,
     /// and clicking an older one selects that instead — so the wheel always
     /// changes what the user is looking at, never whatever happened to be drawn
@@ -556,7 +564,78 @@ final class SnipSession {
 
     // MARK: - Keyboard
 
+    /// The two replay keys, compared on key code and device-independent
+    /// modifiers. They are stored like every other shortcut but are never
+    /// registered as global hot keys — they only act inside a snip.
+    private func matches(_ shortcut: Shortcut, _ event: NSEvent) -> Bool {
+        guard event.keyCode == UInt16(truncatingIfNeeded: shortcut.keyCode) else { return false }
+        let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        return Shortcut.carbonModifiers(from: flags) == shortcut.modifiers
+    }
+
+    /// Walks the replay history. `-1` is the live capture, so stepping newer
+    /// past the newest entry returns to what was on screen.
+    func historyStep(older: Bool) {
+        if historyEntries.isEmpty { historyEntries = SessionStore.entries() }
+        // A freshly opened snip has no active screen until the pointer has been
+        // used, so fall back to the screen under it.
+        guard let screen = activeScreen ?? Displays.underMouse(),
+              let displayID = Displays.id(of: screen) else { return }
+        activeScreen = screen
+        let matching = historyEntries.filter { $0.meta.displayID == displayID }
+        guard !matching.isEmpty else {
+            DebugLog.log("history: nothing stored for this display")
+            return
+        }
+        let next = older ? min(historyIndex + 1, matching.count - 1) : max(historyIndex - 1, -1)
+        guard next != historyIndex else { return }
+
+        if next < 0 {
+            if let live = liveShot { apply(shot: live) }
+            historyIndex = -1
+            anchor = liveSelection?.0
+            current = liveSelection?.1
+            liveSelection = nil
+            shapes = []
+            selectedShape = nil
+            redraw()
+            DebugLog.log("history: back to the live frame")
+            return
+        }
+        guard let (image, meta) = SessionStore.load(matching[next]) else { return }
+        if liveShot == nil {
+            liveShot = shots[displayID]
+            liveSelection = anchor.flatMap { start in current.map { (start, $0) } }
+        }
+        apply(shot: Shot(displayID: displayID, screen: screen, image: image))
+        historyIndex = next
+        let box = meta.selection
+        anchor = CGPoint(x: box[0], y: box[1])
+        current = CGPoint(x: box[0] + box[2], y: box[1] + box[3])
+        shapes = meta.shapes.map(SessionStore.shape(from:))
+        selectedShape = nil
+        redraw()
+        DebugLog.log("history: showing entry \(next) shapes=\(shapes.count)")
+    }
+
+    private func apply(shot: Shot) {
+        shots[shot.displayID] = shot
+        let sampler = PixelSampler(shot.image)
+        samplers[shot.displayID] = sampler
+        for window in windows {
+            (window.contentView as? SelectionView)?.replaceShot(shot, sampler: sampler)
+        }
+    }
+
     func keyDown(_ event: NSEvent) -> Bool {
+        if matches(ShortcutStore.shortcut(for: .historyPrevious), event) {
+            historyStep(older: true)
+            return true
+        }
+        if matches(ShortcutStore.shortcut(for: .historyNext), event) {
+            historyStep(older: false)
+            return true
+        }
         if mode == .markup, event.modifierFlags.contains(.command),
            event.charactersIgnoringModifiers?.lowercased() == "z" {
             undo()
@@ -681,6 +760,13 @@ final class SnipSession {
                                 selection: cropped.localRect,
                                 scale: CGFloat(cropped.image.width) / max(1, cropped.localRect.width))
         let finished = Rounded.apply(flattened)
+        // Keep the frozen frame so this snip can be reopened later and the
+        // region or the marks redone.
+        if let screen = activeScreen, let displayID = Displays.id(of: screen),
+           let shot = shots[displayID], let rect = selection(on: screen) {
+            SessionStore.save(frame: shot.image, displayID: displayID,
+                              selection: rect, shapes: shapes)
+        }
         dismiss()
 
         switch finish {
