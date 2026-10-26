@@ -85,6 +85,9 @@ Hold `⇧` with a snip to keep Peg's own windows in the frame — the clotheslin
 pin, the settings window — which is how you photograph Peg itself. Or tick
 「截图包含 Peg 自己的窗口」 in the menu to keep it on.
 
+An existing frame is moved by dragging inside it and resized by its four corner
+handles; a plain click leaves it alone. Drag outside to start a new one.
+
 While sniffing a region: `R` `O` `A` `P` `H` `T` `M` `B` pick a tool (rect,
 ellipse, arrow, pen, highlighter, text, mosaic, blur), `⌘Z` undoes, `⏎` commits,
 `P` pins the selection, `L` starts a scroll capture, `Esc` leaves the tool and
