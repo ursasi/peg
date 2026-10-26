@@ -129,10 +129,16 @@ enum AnnotationRenderer {
                 .foregroundColor: shape.color
             ]
             let width = max(40, imageSize.width - shape.start.x - 8)
+            // A caption can hold line breaks, so its box has to be measured
+            // rather than assumed to be one line tall.
+            let measured = (shape.text as NSString).boundingRect(
+                with: CGSize(width: width, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: attributes)
             let box = CGRect(x: shape.start.x,
                              y: shape.start.y,
                              width: width,
-                             height: shape.fontSize * 1.6)
+                             height: ceil(measured.height) + 2)
             (shape.text as NSString).draw(in: space.rect(box), withAttributes: attributes)
 
         case .mosaic, .blur:

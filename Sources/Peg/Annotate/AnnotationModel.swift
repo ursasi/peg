@@ -16,6 +16,28 @@ enum AnnotationTool: Int, CaseIterable {
         }
     }
 
+    /// The key that picks this tool. A letter is easier to remember than its
+    /// position in a row of eight.
+    var key: String {
+        switch self {
+        case .rect: return "r"
+        case .ellipse: return "o"
+        case .arrow: return "a"
+        case .pen: return "p"
+        case .marker: return "h"
+        case .text: return "t"
+        case .mosaic: return "m"
+        case .blur: return "b"
+        }
+    }
+
+    /// Letters first, then the old digits so both keep working.
+    static func tool(forKey key: String) -> AnnotationTool? {
+        if let letter = allCases.first(where: { $0.key == key.lowercased() }) { return letter }
+        guard let digit = Int(key), digit >= 1 else { return nil }
+        return AnnotationTool(rawValue: digit - 1)
+    }
+
     var title: String {
         switch self {
         case .rect: return "矩形"

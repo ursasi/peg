@@ -465,6 +465,13 @@ final class SnipSession {
         window.sendEvent(event)
     }
 
+    /// Debug channel: drop a caption into the current snip, so the rendered
+    /// result can be checked without typing into the overlay.
+    func debugAddText(_ text: String) {
+        guard let screen = activeScreen, let rect = selection(on: screen) else { return }
+        addText(text, at: CGPoint(x: rect.minX + 20, y: rect.minY + 20))
+    }
+
     func debugType(_ text: String) {
         guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return }
         DebugLog.log("debugType responder=\(String(describing: window.firstResponder))")
@@ -493,8 +500,8 @@ final class SnipSession {
             return true
         }
         if mode == .markup,
-           let digit = Int(event.charactersIgnoringModifiers ?? ""), digit >= 1, digit <= 8,
-           let tool = AnnotationTool(rawValue: digit - 1) {
+           let typed = event.charactersIgnoringModifiers, typed.count == 1,
+           let tool = AnnotationTool.tool(forKey: typed) {
             setTool(tool)
             return true
         }
@@ -564,10 +571,17 @@ final class SnipSession {
 
     private func textBounds(_ shape: AnnotationShape) -> CGRect {
         let font = NSFont.systemFont(ofSize: max(8, shape.fontSize), weight: .semibold)
-        let size = (shape.text as NSString).size(withAttributes: [.font: font])
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        // Measure the way the renderer draws, line breaks included, so the grab
+        // area matches a multi-line caption.
+        let single = (shape.text as NSString).size(withAttributes: attributes)
+        let measured = (shape.text as NSString).boundingRect(
+            with: CGSize(width: max(40, single.width), height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes)
         return CGRect(x: shape.start.x, y: shape.start.y,
-                      width: max(8, size.width),
-                      height: max(shape.fontSize * 1.6, size.height))
+                      width: max(8, ceil(measured.width)),
+                      height: max(shape.fontSize * 1.4, ceil(measured.height) + 2))
     }
 
     /// Bounds of the caption at `index`, in view points: the overlay outlines it
