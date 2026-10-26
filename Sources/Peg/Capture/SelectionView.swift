@@ -32,6 +32,8 @@ final class SelectionView: NSView, NSTextViewDelegate {
     private var captionHover: Int?
     /// Index of an existing caption being re-edited.
     private var editingShape: Int?
+    private var toast: String?
+    private var toastWork: DispatchWorkItem?
     private var movingTextLast: CGPoint = .zero
     private var previewSources: (mosaic: CGImage?, blur: CGImage?)?
 
@@ -247,6 +249,10 @@ final class SelectionView: NSView, NSTextViewDelegate {
     }
 
     override func keyDown(with event: NSEvent) {
+        if textEditor == nil, event.keyCode == 8 {    // c copies the colour under the pointer
+            copyColourUnderPointer(shift: event.modifierFlags.contains(.shift))
+            return
+        }
         if textEditor == nil, event.keyCode == 51 {   // ⌫ deletes the selected mark
             session?.deleteSelected()
             needsDisplay = true
@@ -324,6 +330,10 @@ final class SelectionView: NSView, NSTextViewDelegate {
             drawHint()
         }
 
+        if let toast {
+            drawToast(toast)
+        }
+
         if activeCursor != nil, session?.allowsMagnifier(on: shot.screen) != false {
             drawMagnifier()
         }
@@ -398,6 +408,8 @@ final class SelectionView: NSView, NSTextViewDelegate {
         case copy
         case pin
         case scroll
+        /// Opens the colour palette.
+        case colour
         /// Step the active tool's size: stroke width, or type size for text.
         case sizeStep(CGFloat)
         /// The size readout: a button-sized label, not something to click.
@@ -416,6 +428,13 @@ final class SelectionView: NSView, NSTextViewDelegate {
     private var barHover: Int = -1
     private static var symbolCache: [String: NSImage] = [:]
 
+    /// Colours offered in the bar's palette. Snipaste's list, roughly.
+    static let palette: [(String, NSColor)] = [
+        ("红", .systemRed), ("橙", .systemOrange), ("黄", .systemYellow),
+        ("绿", .systemGreen), ("蓝", .systemBlue), ("紫", .systemPurple),
+        ("白", .white), ("黑", .black)
+    ]
+
     private static let barSpec: [(symbol: String, title: String, action: BarAction)] = [
         ("rectangle", "矩形", .tool(.rect)),
         ("circle", "椭圆", .tool(.ellipse)),
@@ -425,6 +444,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
         ("textformat", "文字", .tool(.text)),
         ("square.grid.3x3", "马赛克", .tool(.mosaic)),
         ("camera.filters", "模糊", .tool(.blur)),
+        ("circle.fill", "颜色", .colour),
         ("arrow.uturn.backward", "撤销 ⌘Z", .undo),
         ("checkmark", "完成 ⏎", .copy),
         ("pin", "贴到屏幕 P", .pin),
@@ -436,6 +456,9 @@ final class SelectionView: NSView, NSTextViewDelegate {
     /// stroke width a guess.
     private func specs() -> [(symbol: String, title: String, action: BarAction, width: CGFloat, value: String?)] {
         var all: [(String, String, BarAction, CGFloat, String?)] = Self.barSpec.map { spec in
+            if case .colour = spec.action {
+                return ("circle.fill", "颜色", spec.action, 34, nil)
+            }
             // The commit button says 完成 in words: a bare tick left people
             // hunting for a ⏎ they had never been told about.
             if case .copy = spec.action {
@@ -539,6 +562,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
         // The wheel inside the box should act on this caption's size.
         session?.textSize = shape.fontSize
         editingShape = index
+        session?.suppressedShape = index
         beginText(at: shape.start, text: shape.text)
     }
 
@@ -620,6 +644,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
         textEditor = nil
         session?.isEditingCaption = false
         view.removeFromSuperview()
+        session?.suppressedShape = nil
         if let index = editingShape {
             // Re-editing: change that caption, or drop it if it was emptied.
             if commit { session?.updateText(at: index, with: value) }
@@ -628,6 +653,39 @@ final class SelectionView: NSView, NSTextViewDelegate {
             session?.addText(value, at: textAnchor)
         }
         window?.makeFirstResponder(self)
+        needsDisplay = true
+    }
+
+    /// `c` copies the colour under the pointer as `#RRGGBB`; `⇧c` copies the
+    /// same colour as `rgb(r, g, b)`. The magnifier already shows the value, so
+    /// this saves reading it off the screen.
+    private func copyColourUnderPointer(shift: Bool) {
+        guard let point = activeCursor, let sampler else { return }
+        let px = Int(point.x * shot.scale)
+        let py = Int(point.y * shot.scale)
+        guard let (r, g, b) = sampler.rgb(x: px, y: py) else { return }
+        let text = shift
+            ? "rgb(\(r), \(g), \(b))"
+            : String(format: "#%02X%02X%02X", r, g, b)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        showToast("已复制 \(text)")
+        DebugLog.log("copy colour \(text)")
+    }
+
+    /// A short-lived pill, so a copy is visible without opening anything.
+    private func showToast(_ text: String) {
+        toast = text
+        toastWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                self?.toast = nil
+                self?.needsDisplay = true
+            }
+        }
+        toastWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: work)
         needsDisplay = true
     }
 
@@ -708,6 +766,16 @@ final class SelectionView: NSView, NSTextViewDelegate {
                 NSColor.white.withAlphaComponent(0.16).setFill()
                 NSBezierPath(roundedRect: item.rect, xRadius: 6, yRadius: 6).fill()
             }
+            if case .colour = item.action {
+                let dot = item.rect.insetBy(dx: 9, dy: 8)
+                (session?.color ?? .systemRed).setFill()
+                NSBezierPath(ovalIn: dot).fill()
+                NSColor.white.withAlphaComponent(0.75).setStroke()
+                let ring = NSBezierPath(ovalIn: dot.insetBy(dx: -0.5, dy: -0.5))
+                ring.lineWidth = 1
+                ring.stroke()
+                continue
+            }
             if let value = item.value {
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold),
@@ -742,6 +810,45 @@ final class SelectionView: NSView, NSTextViewDelegate {
         if barHover >= 0, barHover < items.count {
             drawTooltip(for: items[barHover], bar: background)
         }
+    }
+
+    /// Pops the palette next to the swatch button.
+    private func showPalette() {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for (name, colour) in Self.palette {
+            let item = NSMenuItem(title: name, action: #selector(chooseColour(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = colour
+            item.image = Self.swatch(colour)
+            if session?.color == colour { item.state = .on }
+            menu.addItem(item)
+        }
+        let anchor = NSPoint(x: cursor?.x ?? bounds.midX, y: (cursor?.y ?? bounds.midY) + 4)
+        menu.popUp(positioning: nil, at: anchor, in: self)
+    }
+
+    @objc private func chooseColour(_ sender: NSMenuItem) {
+        guard let colour = sender.representedObject as? NSColor else { return }
+        session?.color = colour
+        // A caption being typed should change with the palette too.
+        if let editor = textEditor { applyFont(size: session?.textSize ?? 26, to: editor); editor.textColor = colour }
+        needsDisplay = true
+    }
+
+    static func swatch(_ colour: NSColor) -> NSImage {
+        let size = NSSize(width: 16, height: 16)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        let rect = NSRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+        colour.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+        NSColor.black.withAlphaComponent(0.25).setStroke()
+        let edge = NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
+        edge.lineWidth = 1
+        edge.stroke()
+        image.unlockFocus()
+        return image
     }
 
     private func drawTooltip(for item: BarItem, bar: CGRect) {
@@ -805,6 +912,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
         case .copy: session?.commit(.copyAndSave)
         case .pin: session?.commit(.pin)
         case .scroll: session?.beginScrollFromBar()
+        case .colour: showPalette()
         case .sizeStep(let step): session?.adjustSize(step)
         case .noop: break
         }
@@ -850,6 +958,24 @@ final class SelectionView: NSView, NSTextViewDelegate {
         NSColor.black.withAlphaComponent(0.62).setFill()
         NSBezierPath(roundedRect: box, xRadius: 10, yRadius: 10).fill()
         (text as NSString).draw(in: box.insetBy(dx: 18, dy: 10), withAttributes: attributes)
+    }
+
+    private func drawToast(_ text: String) {
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.white
+        ]
+        let size = (text as NSString).size(withAttributes: attributes)
+        let padding = NSSize(width: 10, height: 6)
+        let bubble = CGRect(x: bounds.midX - (size.width + padding.width * 2) / 2,
+                            y: bounds.minY + 120,
+                            width: size.width + padding.width * 2,
+                            height: size.height + padding.height * 2)
+        NSColor.black.withAlphaComponent(0.82).setFill()
+        NSBezierPath(roundedRect: bubble, xRadius: 7, yRadius: 7).fill()
+        (text as NSString).draw(at: CGPoint(x: bubble.minX + padding.width,
+                                            y: bubble.minY + padding.height),
+                                withAttributes: attributes)
     }
 
     private func drawMagnifier() {

@@ -68,9 +68,16 @@ final class SnipSession {
     var isDrafting: Bool { draftShape != nil }
 
     /// Drawn marks, plus the one under the pointer right now.
+    /// While a caption is being re-edited its own mark is drawn by the editor,
+    /// so the shape hides: drawing both stacked them into a doubled, bolder
+    /// ghost.
+    var suppressedShape: Int?
+
     var visibleShapes: [AnnotationShape] {
-        if let draftShape { return shapes + [draftShape] }
-        return shapes
+        var list = shapes
+        if let index = suppressedShape, index < list.count { list.remove(at: index) }
+        if let draftShape { list.append(draftShape) }
+        return list
     }
 
     // MARK: - Start / stop
