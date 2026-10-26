@@ -228,11 +228,11 @@ final class SelectionView: NSView, NSTextViewDelegate {
         }
         let delta = event.scrollingDeltaY
         guard delta != 0 else { return }
-        if textEditor != nil {
+        if let editor = textEditor {
             // The box being typed is the current one, whatever else is drawn.
             session?.adjustSize(delta > 0 ? 1 : -1)
             if let size = session?.textSize {
-                textEditor?.font = .systemFont(ofSize: size, weight: .semibold)
+                applyFont(size: size, to: editor)
                 growText()
             }
             needsDisplay = true
@@ -555,7 +555,13 @@ final class SelectionView: NSView, NSTextViewDelegate {
         let storage = NSTextStorage()
         storage.addLayoutManager(layout)
 
-        let view = NSTextView(frame: NSRect(x: point.x, y: point.y, width: width, height: size * 1.4),
+        // Integral geometry: a fractional origin or height makes AppKit render
+        // text between pixels, which reads as blur — especially once the size
+        // has been changed a few times.
+        let origin = CGPoint(x: point.x.rounded(), y: point.y.rounded())
+        let view = NSTextView(frame: NSRect(x: origin.x, y: origin.y,
+                                            width: width.rounded(.down),
+                                            height: ceil(size * 1.4)),
                               textContainer: container)
         view.isRichText = false
         view.drawsBackground = false
@@ -625,14 +631,32 @@ final class SelectionView: NSView, NSTextViewDelegate {
         needsDisplay = true
     }
 
+    /// Sets the caption's type size on the whole text, not just on the control:
+    /// leaving the run with its old font made AppKit scale the glyphs up, which
+    /// looked blurred.
+    private func applyFont(size: CGFloat, to editor: NSTextView) {
+        let font = NSFont.systemFont(ofSize: size, weight: .semibold)
+        editor.font = font
+        let whole = NSRange(location: 0, length: editor.textStorage?.length ?? 0)
+        editor.textStorage?.addAttribute(.font, value: font, range: whole)
+        editor.typingAttributes = [
+            .font: font,
+            .foregroundColor: session?.color ?? .systemRed
+        ]
+    }
+
     /// Keeps the editor tall enough for everything typed into it.
     private func growText() {
         guard let view = textEditor, let layout = view.layoutManager,
               let container = view.textContainer else { return }
         layout.ensureLayout(for: container)
-        let needed = max(view.font?.pointSize ?? 26, layout.usedRect(for: container).height)
+        let needed = ceil(max(view.font?.pointSize ?? 26, layout.usedRect(for: container).height))
         guard abs(view.frame.height - needed) > 0.5 else { return }
-        view.frame.size.height = needed
+        view.frame = NSRect(x: view.frame.origin.x.rounded(),
+                            y: view.frame.origin.y.rounded(),
+                            width: view.frame.width.rounded(.down),
+                            height: needed)
+        view.needsDisplay = true
         needsDisplay = true
     }
 
