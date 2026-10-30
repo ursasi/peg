@@ -744,6 +744,20 @@ final class SnipSession {
         return textBounds(shapes[index])
     }
 
+    /// Moves any mark, not just captions: dragging a rect or an arrow is the
+    /// obvious way to fix where it landed.
+    func moveShape(at index: Int, by delta: CGSize) {
+        guard index >= 0, index < shapes.count else { return }
+        shapes[index].start.x += delta.width
+        shapes[index].start.y += delta.height
+        shapes[index].end.x += delta.width
+        shapes[index].end.y += delta.height
+        shapes[index].points = shapes[index].points.map {
+            CGPoint(x: $0.x + delta.width, y: $0.y + delta.height)
+        }
+        redraw()
+    }
+
     func moveText(at index: Int, by delta: CGSize) {
         guard index >= 0, index < shapes.count, shapes[index].tool == .text else { return }
         shapes[index].start.x += delta.width
