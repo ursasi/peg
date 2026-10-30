@@ -29,6 +29,9 @@ final class SelectionView: NSView, NSTextViewDelegate {
     private var textAnchor: CGPoint = .zero
     /// Index of the caption being dragged, while one is being moved.
     private var movingTextIndex: Int?
+    /// Index of a non-caption mark being dragged.
+    private var movingShapeIndex: Int?
+    private var movingShapeLast: CGPoint = .zero
     /// Caption under the pointer, shown as draggable.
     private var captionHover: Int?
     /// Index of an existing caption being re-edited.
@@ -166,11 +169,14 @@ final class SelectionView: NSView, NSTextViewDelegate {
                 needsDisplay = true
                 return
             }
-            // Any other mark can be selected too: it is what the wheel sizes.
+            // Any other mark can be selected too, and dragging its body moves
+            // it: the wheel sizes the selection, the pointer moves it.
             if let index = session?.shapeIndex(at: point) {
                 commitPendingText()
                 session?.select(index)
                 consumedClick = true
+                movingShapeIndex = index
+                movingShapeLast = point
                 needsDisplay = true
                 return
             }
@@ -237,6 +243,14 @@ final class SelectionView: NSView, NSTextViewDelegate {
             needsDisplay = true
             return
         }
+        if let index = movingShapeIndex {
+            session?.moveShape(at: index,
+                               by: CGSize(width: point.x - movingShapeLast.x,
+                                          height: point.y - movingShapeLast.y))
+            movingShapeLast = point
+            needsDisplay = true
+            return
+        }
         if let index = movingTextIndex {
             session?.moveText(at: index,
                               by: CGSize(width: point.x - movingTextLast.x,
@@ -264,8 +278,9 @@ final class SelectionView: NSView, NSTextViewDelegate {
             needsDisplay = true
             return
         }
-        if movingTextIndex != nil {
+        if movingTextIndex != nil || movingShapeIndex != nil {
             movingTextIndex = nil
+            movingShapeIndex = nil
             consumedClick = false
             needsDisplay = true
             return
@@ -366,11 +381,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
             drawMarks(in: selection)
             if let index = session?.selectedShape, editingShape == nil,
                let rect = session?.bounds(of: index) {
-                let outline = NSBezierPath(rect: rect.insetBy(dx: -6, dy: -5))
-                outline.lineWidth = 1.2
-                outline.setLineDash([5, 3], count: 2, phase: 0)
-                NSColor.white.withAlphaComponent(0.9).setStroke()
-                outline.stroke()
+                drawObjectBox(rect.insetBy(dx: -6, dy: -5))
             }
             if let index = captionHover, let rect = session?.textRect(at: index) {
                 let outline = NSBezierPath(rect: rect.insetBy(dx: -5, dy: -4))
@@ -615,14 +626,14 @@ final class SelectionView: NSView, NSTextViewDelegate {
             blurred = needsBlur ? previewSources?.blur : nil
         }
 
-        NSGraphicsContext.saveGraphicsState()
-        NSBezierPath(rect: selection).addClip()
+        // Marks are not clipped to the frame: shrinking the frame used to make
+        // every mark outside it vanish, which felt like losing work. They stay
+        // on the dimmed plate; the crop decides what ends up in the picture.
         let space = DrawSpace(scale: 1, flipped: true, height: bounds.height)
         for shape in session.visibleShapes {
             AnnotationRenderer.draw(shape, space: space, mosaic: mosaic, blurred: blurred,
                                     imageSize: bounds.size)
         }
-        NSGraphicsContext.restoreGraphicsState()
     }
 
     // MARK: - Inline text
@@ -833,6 +844,26 @@ final class SelectionView: NSView, NSTextViewDelegate {
             if abs(point.x - centre.x) <= 12, abs(point.y - centre.y) <= 12 { return corner }
         }
         return nil
+    }
+
+    /// The selected mark gets the same treatment as the frame: an outline and
+    /// four corner dots, so it reads as an object you can act on.
+    private func drawObjectBox(_ rect: CGRect) {
+        let outline = NSBezierPath(rect: rect)
+        outline.lineWidth = 1.2
+        outline.setLineDash([5, 3], count: 2, phase: 0)
+        NSColor.white.withAlphaComponent(0.95).setStroke()
+        outline.stroke()
+        for centre in [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY),
+                       CGPoint(x: rect.minX, y: rect.maxY), CGPoint(x: rect.maxX, y: rect.maxY)] {
+            let dot = CGRect(x: centre.x - 3, y: centre.y - 3, width: 6, height: 6)
+            NSColor.white.setFill()
+            NSBezierPath(ovalIn: dot).fill()
+            accent.setStroke()
+            let ring = NSBezierPath(ovalIn: dot)
+            ring.lineWidth = 1.2
+            ring.stroke()
+        }
     }
 
     private func drawHandles(in rect: CGRect) {
