@@ -136,7 +136,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
             // An existing box is adjusted, never replaced, by a press on a
             // corner or inside it: a stray click used to throw the frame away
             // and start a new one.
-            if let corner = corner(at: point, in: selection) {
+            if session?.tool == nil, let corner = corner(at: point, in: selection) {
                 grab = .resize(corner, selection)
                 grabStart = point
                 consumedClick = true
@@ -152,14 +152,15 @@ final class SelectionView: NSView, NSTextViewDelegate {
             }
             // Double click re-opens a caption for editing; a single click picks
             // it up (and selects it, so the size controls follow).
-            if event.clickCount >= 2, let index = session?.textShapeIndex(at: point) {
+            if session?.tool == nil, event.clickCount >= 2,
+               let index = session?.textShapeIndex(at: point) {
                 commitPendingText()
                 consumedClick = true
                 session?.select(index)
                 editExistingText(at: index)
                 return
             }
-            if let index = session?.textShapeIndex(at: point) {
+            if session?.tool == nil, let index = session?.textShapeIndex(at: point) {
                 commitPendingText()
                 consumedClick = true
                 session?.select(index)
@@ -170,8 +171,9 @@ final class SelectionView: NSView, NSTextViewDelegate {
                 return
             }
             // Any other mark can be selected too, and dragging its body moves
-            // it: the wheel sizes the selection, the pointer moves it.
-            if let index = session?.shapeIndex(at: point) {
+            // it — but only while no tool is up, or a tool could never be used
+            // on top of an existing mark (a caption inside a rect, say).
+            if session?.tool == nil, let index = session?.shapeIndex(at: point) {
                 commitPendingText()
                 session?.select(index)
                 consumedClick = true
