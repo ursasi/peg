@@ -152,7 +152,13 @@ final class SelectionView: NSView, NSTextViewDelegate {
             }
             // Double click re-opens a caption for editing; a single click picks
             // it up (and selects it, so the size controls follow).
-            if session?.tool == nil, event.clickCount >= 2,
+            // The text tool still wants to move captions: pressing an existing
+            // one picks it up, pressing empty space starts a new one. That is
+            // what other capture tools do, and it keeps a caption draggable
+            // without pressing Esc first.
+            let captionsAreTargets = session?.tool == nil || session?.tool == .text
+
+            if captionsAreTargets, event.clickCount >= 2,
                let index = session?.textShapeIndex(at: point) {
                 commitPendingText()
                 consumedClick = true
@@ -160,7 +166,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
                 editExistingText(at: index)
                 return
             }
-            if session?.tool == nil, let index = session?.textShapeIndex(at: point) {
+            if captionsAreTargets, let index = session?.textShapeIndex(at: point) {
                 commitPendingText()
                 consumedClick = true
                 session?.select(index)
@@ -421,7 +427,11 @@ final class SelectionView: NSView, NSTextViewDelegate {
             drawToast(toast)
         }
 
-        if activeCursor != nil, session?.allowsMagnifier(on: shot.screen) != false {
+        // The magnifier and its colour readout are for framing a precise
+        // region; while a tool is up they sit on top of the thing being drawn,
+        // so they step aside.
+        if activeCursor != nil, session?.tool == nil, textEditor == nil,
+           session?.allowsMagnifier(on: shot.screen) != false {
             drawMagnifier()
         }
     }
