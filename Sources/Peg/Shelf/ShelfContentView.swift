@@ -159,6 +159,10 @@ final class ShelfContentView: NSView {
         strip.dropInNewest()
     }
 
+    func clearSelection() {
+        strip.clearSelection()
+    }
+
     func setItems(_ items: [ShotItem]) {
         strip.setItems(items)
         emptyLabel.isHidden = !items.isEmpty
@@ -457,6 +461,14 @@ final class ThumbStrip: NSView {
         guard !selection.isEmpty else { return }
         selection.removeAll()
         for thumb in thumbs { thumb.isSelected = false }
+    }
+
+    /// A click on the rope or the empty part of the line is a click outside the
+    /// picked cards, so it drops the pick instead of leaving the blue frames
+    /// behind for ever.
+    override func mouseDown(with event: NSEvent) {
+        clearSelection()
+        super.mouseDown(with: event)
     }
 
     /// What a drag starting on `thumb` should carry. A picked card carries the
@@ -948,12 +960,16 @@ final class ThumbView: NSView, NSDraggingSource {
 
     override func mouseUp(with event: NSEvent) {
         guard !dragged, !toggledOnDown else { return }
+        let hadSelection = strip?.selection.isEmpty == false
         if event.clickCount >= 2 {
             onOpen?()
         } else {
             onCopy?()
             nudge(3)
         }
+        // A plain click acts on one shot; it also finishes the pick so the
+        // blue frames do not stay on afterwards.
+        if hadSelection { strip?.clearSelection() }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -1002,27 +1018,28 @@ final class ThumbView: NSView, NSDraggingSource {
         // `dragged` would stay set, silently keeping this sheet's hover preview
         // off until it is clicked again. Only `mouseDown` clears it otherwise.
         dragged = false
-        guard pinsOnDrop else {
-            dragURLs.removeAll()
-            return
-        }
-        pinsOnDrop = false
-        // Esc lands here with an empty operation and the pointer barely moved;
-        // that is a cancelled drag, not a request to pin.
-        let cancelled = operation.isEmpty
-            && hypot(screenPoint.x - dragStartScreen.x,
-                     screenPoint.y - dragStartScreen.y) < 12
-        if cancelled {
-            dragURLs.removeAll()
-            return
-        }
-        let urls = dragURLs.isEmpty ? [item.url] : dragURLs
-        for (index, url) in urls.enumerated() {
-            // Cascade the pins so a multi-shot drop is not one pile.
-            let offset = CGFloat(index) * 14
-            PinController.shared.pinFile(at: url,
-                                         centeredAt: CGPoint(x: screenPoint.x + offset,
-                                                             y: screenPoint.y - offset))
+        if pinsOnDrop {
+            pinsOnDrop = false
+            // Esc lands here with an empty operation and the pointer barely
+            // moved; that is a cancelled drag, not a request to pin.
+            let cancelled = operation.isEmpty
+                && hypot(screenPoint.x - dragStartScreen.x,
+                         screenPoint.y - dragStartScreen.y) < 12
+            if !cancelled {
+                let urls = dragURLs.isEmpty ? [item.url] : dragURLs
+                for (index, url) in urls.enumerated() {
+                    // Cascade the pins so a multi-shot drop is not one pile.
+                    let offset = CGFloat(index) * 14
+                    PinController.shared.pinFile(at: url,
+                                                 centeredAt: CGPoint(x: screenPoint.x + offset,
+                                                                     y: screenPoint.y - offset))
+                }
+                strip?.clearSelection()
+            }
+        } else if !operation.isEmpty {
+            // The files went somewhere; the bundle no longer needs to stay
+            // picked. A cancelled drop keeps the pick so it can be retried.
+            strip?.clearSelection()
         }
         dragURLs.removeAll()
     }

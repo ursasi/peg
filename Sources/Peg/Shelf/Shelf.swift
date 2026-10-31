@@ -201,6 +201,9 @@ final class Shelf {
         hideWork = nil
         PreviewPanel.shared.hide()
         content?.stopWave()
+        // A pick belongs to the visit; when the line slides away, the blue
+        // frames should go with it instead of greeting the next visit.
+        content?.clearSelection()
         guard let panel, isShown else { return }
         isShown = false
 
