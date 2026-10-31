@@ -18,7 +18,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
     private var activeCursor: CGPoint? { cursor ?? demoCursor }
 
     private let dim = NSColor.black.withAlphaComponent(0.38)
-    private let accent = NSColor.systemBlue
+    private let accent = FrameStyle.accent
 
     /// A click that hit the action bar must not also reach the selection logic
     /// on its way up, or the release would reshuffle the rectangle.
@@ -437,28 +437,7 @@ final class SelectionView: NSView, NSTextViewDelegate {
     }
 
     private func drawBorder(_ rect: CGRect) {
-        let path = NSBezierPath(rect: rect.insetBy(dx: -0.5, dy: -0.5))
-        path.lineWidth = 1
-        accent.setStroke()
-        path.stroke()
-
-        // Corner ticks.
-        let arm: CGFloat = 12
-        let tick = NSBezierPath()
-        tick.lineWidth = 2
-        let corners: [(CGPoint, CGFloat, CGFloat)] = [
-            (CGPoint(x: rect.minX, y: rect.minY), 1, 1),
-            (CGPoint(x: rect.maxX, y: rect.minY), -1, 1),
-            (CGPoint(x: rect.minX, y: rect.maxY), 1, -1),
-            (CGPoint(x: rect.maxX, y: rect.maxY), -1, -1)
-        ]
-        for (point, dx, dy) in corners {
-            tick.move(to: CGPoint(x: point.x + dx * arm, y: point.y))
-            tick.line(to: point)
-            tick.line(to: CGPoint(x: point.x, y: point.y + dy * arm))
-        }
-        accent.setStroke()
-        tick.stroke()
+        FrameStyle.draw(in: rect)
     }
 
     private func drawSizeLabel(for rect: CGRect) {

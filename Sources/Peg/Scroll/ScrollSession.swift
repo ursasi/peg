@@ -216,21 +216,22 @@ final class ScrollSession {
             NSLog("Peg scroll %dx%d -> %@", frame.width, frame.height, String(describing: update))
         }
         switch update {
-        case .seeded(let rows):
-            hud?.setStatus("已拼接 \(rows) 像素 · 在框内滚动（上下都行）")
-        case .appended(let rows, let total):
-            hud?.setStatus(rows < 0
-                ? "已向上补 \(total) 像素 · \(stitcher.frames) 屏"
-                : "已拼接 \(total) 像素 · \(stitcher.frames) 屏")
+        case .seeded, .appended:
+            updatePreview()
         case .failed:
             if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1", let before = debugPrevious {
                 NSLog("Peg scroll fail: %@", ScrollMatcher.diagnose(before, frame))
             }
-            hud?.setStatus("这一下没对上 · 慢一点滚")
         case .unchanged, .ignored:
             break
         }
         if ProcessInfo.processInfo.environment["PEG_DEBUG"] == "1" { debugPrevious = frame }
+    }
+
+    /// The preview is sampled directly from the stitcher's row store, so it is
+    /// cheap enough to refresh on every frame that actually adds content.
+    private func updatePreview() {
+        hud?.setPreview(stitcher.previewImage())
     }
 
     private var debugPrevious: ScrollFrame?
@@ -294,17 +295,28 @@ final class ScrollHUD {
     private var content: ScrollHUDView?
 
     func show(region: CGRect, on screen: NSScreen) {
-        let size = NSSize(width: 330, height: 112)
-        var rect = CGRect(origin: .zero, size: size)
+        let size = NSSize(width: 250, height: 350)
+        let gap: CGFloat = 14
+        let margin: CGFloat = 8
 
-        if region.minY - size.height - 14 >= 0 {
-            rect.origin = CGPoint(x: region.minX, y: region.minY - size.height - 14)
-        } else if region.maxY + size.height + 14 <= screen.frame.height {
-            rect.origin = CGPoint(x: region.minX, y: region.maxY + 14)
-        } else {
-            rect.origin = CGPoint(x: screen.frame.width - size.width - 18, y: 18)
+        // Beside the region first (right, then left), so the preview and the
+        // thing being captured can be watched together. Only fall back to
+        // above/below when the screen is too narrow.
+        var origin = CGPoint(x: region.maxX + gap,
+                             y: region.midY - size.height / 2)
+        if origin.x + size.width > screen.frame.width - margin {
+            let left = region.minX - size.width - gap
+            if left >= margin {
+                origin.x = left
+            } else if region.maxY + gap + size.height <= screen.frame.height - margin {
+                origin = CGPoint(x: region.minX, y: region.maxY + gap)
+            } else if region.minY - gap - size.height >= margin {
+                origin = CGPoint(x: region.minX, y: region.minY - size.height - gap)
+            }
         }
-        rect.origin.x = min(max(8, rect.origin.x), screen.frame.width - size.width - 8)
+        origin.x = min(max(margin, origin.x), screen.frame.width - size.width - margin)
+        origin.y = min(max(margin, origin.y), screen.frame.height - size.height - margin)
+        let rect = CGRect(origin: origin, size: size)
 
         let view = ScrollHUDView(frame: rect)
         view.onFinish = { [weak self] in self?.onFinish?() }
@@ -332,6 +344,10 @@ final class ScrollHUD {
         content?.setStatus(text)
     }
 
+    func setPreview(_ image: CGImage?) {
+        content?.setPreview(image)
+    }
+
     func close() {
         panel?.orderOut(nil)
         panel = nil
@@ -344,8 +360,8 @@ final class ScrollHUDView: NSView {
     var onCancel: (() -> Void)?
 
     private let title = NSTextField(labelWithString: "滚动截图")
-    private let status = NSTextField(labelWithString: "在框内向下滚动")
-    private let hint = NSTextField(labelWithString: "慢一点更准 · ⏎ 完成 · ⎋ 取消 · ⌃⌥X 也能完成")
+    private let preview = ScrollPreviewView(frame: .zero)
+    private let hint = NSTextField(labelWithString: "⏎ 完成　·　⎋ 取消　·　⌃⌥X 也能完成")
     private let doneButton = NSButton(title: "完成", target: nil, action: nil)
     private let cancelButton = NSButton(title: "取消", target: nil, action: nil)
 
@@ -360,12 +376,11 @@ final class ScrollHUDView: NSView {
         title.textColor = .white
         addSubview(title)
 
-        status.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        status.textColor = NSColor.white.withAlphaComponent(0.75)
-        addSubview(status)
+        preview.message = "在框内滚动"
+        addSubview(preview)
 
         hint.font = .systemFont(ofSize: 10)
-        hint.textColor = NSColor.white.withAlphaComponent(0.4)
+        hint.textColor = NSColor.white.withAlphaComponent(0.45)
         addSubview(hint)
 
         doneButton.bezelStyle = .rounded
@@ -386,25 +401,37 @@ final class ScrollHUDView: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
+    func setPreview(_ image: CGImage?) {
+        preview.image = image
+    }
+
+    /// Used only for real failures (the stream could not start). Normal
+    /// progress is shown as the picture itself, not as a row count.
     func setStatus(_ text: String) {
-        status.stringValue = text
+        preview.message = text
     }
 
     override func layout() {
         super.layout()
-        let pad: CGFloat = 16
+        let pad: CGFloat = 14
         title.sizeToFit()
         title.frame.origin = NSPoint(x: pad, y: 14)
-        status.sizeToFit()
-        status.frame.origin = NSPoint(x: pad, y: 36)
-        hint.sizeToFit()
-        hint.frame.origin = NSPoint(x: pad, y: bounds.height - 26)
 
         let buttonSize = NSSize(width: 68, height: 26)
+        let buttonY = bounds.height - pad - buttonSize.height
+        hint.sizeToFit()
+        let hintY = buttonY - 8 - hint.frame.height
+        hint.frame.origin = NSPoint(x: pad, y: hintY)
+
+        preview.frame = NSRect(x: pad,
+                               y: title.frame.maxY + 10,
+                               width: bounds.width - pad * 2,
+                               height: max(60, hintY - 10 - (title.frame.maxY + 10)))
+
         doneButton.frame = NSRect(x: bounds.width - pad - buttonSize.width,
-                                  y: bounds.height - 42, width: buttonSize.width, height: buttonSize.height)
+                                  y: buttonY, width: buttonSize.width, height: buttonSize.height)
         cancelButton.frame = NSRect(x: doneButton.frame.minX - buttonSize.width - 8,
-                                    y: doneButton.frame.minY, width: buttonSize.width, height: buttonSize.height)
+                                    y: buttonY, width: buttonSize.width, height: buttonSize.height)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -417,4 +444,79 @@ final class ScrollHUDView: NSView {
 
     @objc private func finish() { onFinish?() }
     @objc private func cancel() { onCancel?() }
+}
+
+/// The live stitched picture. It is fitted into the card so the growth reads
+/// even when the result becomes much taller than it is wide.
+final class ScrollPreviewView: NSView {
+    var image: CGImage? {
+        didSet {
+            if image != nil { message = nil }
+            needsDisplay = true
+        }
+    }
+
+    var message: String? {
+        didSet { needsDisplay = true }
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.withAlphaComponent(0.055).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+
+        if let image, image.width > 0, image.height > 0 {
+            let available = bounds.insetBy(dx: 5, dy: 5)
+            let scale = min(available.width / CGFloat(image.width),
+                            available.height / CGFloat(image.height))
+            let size = CGSize(width: max(1, CGFloat(image.width) * scale),
+                              height: max(1, CGFloat(image.height) * scale))
+            let frame = CGRect(x: available.midX - size.width / 2,
+                               y: available.midY - size.height / 2,
+                               width: size.width, height: size.height)
+
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(roundedRect: frame, xRadius: 3, yRadius: 3).addClip()
+            NSGraphicsContext.current?.imageInterpolation = .high
+            NSImage(cgImage: image,
+                    size: NSSize(width: image.width, height: image.height)).draw(in: frame)
+            NSGraphicsContext.restoreGraphicsState()
+
+            NSColor.white.withAlphaComponent(0.16).setStroke()
+            let border = NSBezierPath(roundedRect: frame, xRadius: 3, yRadius: 3)
+            border.lineWidth = 1
+            border.stroke()
+        }
+
+        if let message, !message.isEmpty {
+            draw(message)
+        }
+    }
+
+    private func draw(_ text: String) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.92),
+            .paragraphStyle: paragraph
+        ]
+        let maxWidth = max(40, bounds.width - 28)
+        let measured = (text as NSString).boundingRect(
+            with: NSSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attributes)
+        let size = CGSize(width: min(maxWidth, ceil(measured.width) + 18),
+                          height: ceil(measured.height) + 12)
+        let plate = CGRect(x: bounds.midX - size.width / 2,
+                           y: bounds.midY - size.height / 2,
+                           width: size.width, height: size.height)
+        NSColor.black.withAlphaComponent(0.62).setFill()
+        NSBezierPath(roundedRect: plate, xRadius: 6, yRadius: 6).fill()
+        (text as NSString).draw(with: plate.insetBy(dx: 9, dy: 6),
+                                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                                attributes: attributes)
+    }
 }

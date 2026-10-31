@@ -35,9 +35,9 @@ The one thing that goes online is 检查更新 in the menu, and only when you as
 | **Frozen-screen snip** | Every display is captured first, so the selection overlay never appears in the output and the magnifier works on real pixels. |
 | **Window snapping** | Hover a window and it is outlined; click to take the whole window, drag to pick your own rectangle. |
 | **Inline annotation** | 8 tools (rectangle, ellipse, arrow, pen, marker, text, mosaic, blur) drawn straight onto the frozen screen. What you draw is what you get. |
-| **Scroll capture** | Manually scroll a region; frames are aligned by row fingerprints and stitched, both downwards and upwards. |
-| **GIF recording** | Frame a region, record up to 20 s at 12 fps, stop with the same shortcut. A red frame shows exactly what is being recorded. |
-| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, drag anywhere (⌥-drag to pin it where you drop), double-click to open. The clothesline idea comes from Tendedero. |
+| **Scroll capture** | Manually scroll a region; frames are aligned by row fingerprints and stitched, both downwards and upwards, with a live preview of the finished picture beside the frame. |
+| **GIF recording** | Frame a region, record up to 20 s at 12 fps, stop with the same shortcut. The same blue frame as the snip marks exactly what is being recorded. |
+| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, ⌘-click to pick several and drag them out together, drag anywhere (⌥-drag to pin it where you drop), double-click to open. The clothesline idea comes from Tendedero. |
 | **Pins** | Any shot floats above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. Clipboard text pins too, as a dark code card with a line-number gutter and light syntax colouring; drag it as one piece, hold ⌥ to select inside. |
 | **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
 | **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon, and editable shortcuts. |
@@ -55,7 +55,8 @@ starts a scroll capture; the magnifier reads real pixels.
 </p>
 
 **The clothesline.** Recent shots hang under the menu bar with the time they
-were taken; hover for a preview, click to copy, drag anywhere.
+were taken; hover for a preview, click to copy, ⌘-click a few and drag them out
+as one bundle, or drag anywhere.
 
 <p align="center">
   <img src="docs/screen-shelf.png" alt="Clothesline with pegged screenshots" width="100%">

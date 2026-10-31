@@ -258,7 +258,7 @@ final class ShelfContentView: NSView {
     func refreshHints() {
         let snip = ShortcutStore.shortcut(for: .snip).display
         let line = ShortcutStore.shortcut(for: .shelf).display
-        hint.attributedStringValue = Self.text("\(snip) 截图　·　点图复制　·　悬浮预览　·　拖出去用　·　\(line) 收起",
+        hint.attributedStringValue = Self.text("\(snip) 截图　·　点图复制　·　⌘点多选　·　悬浮预览　·　拖出去用　·　\(line) 收起",
                                                size: 11, alpha: 0.95)
         emptyLabel.attributedStringValue = Self.text("按 \(snip) 截一张，它就挂在这根线上",
                                                      size: 12, alpha: 0.8)
@@ -357,6 +357,9 @@ final class HorizontalScrollView: NSScrollView {
 final class ThumbStrip: NSView {
     weak var host: NSView?
     private var thumbs: [ThumbView] = []
+    /// Cards picked with ⌘. Dragging any picked card hands all of them to the
+    /// drop target at once.
+    private(set) var selection: Set<URL> = []
     /// One hover target for the whole line. Each card used to schedule its own
     /// preview, so sweeping across a few of them queued several of them and the
     /// last one to fire was not necessarily the one under the pointer.
@@ -375,11 +378,13 @@ final class ThumbStrip: NSView {
     func setItems(_ items: [ShotItem]) {
         let previous = Set(thumbs.map { $0.item.url })
         thumbs.forEach { $0.removeFromSuperview() }
+        selection.formIntersection(Set(items.map(\.url)))
 
         // Oldest on the left, newest on the right, so the new one lands at the
         // end of the line and older ones scroll in from the left.
         thumbs = items.reversed().map { item in
             let view = ThumbView(item: item)
+            view.isSelected = selection.contains(item.url)
             view.onCopy = { [weak self] in self?.onCopy?(item) }
             view.onOpen = { [weak self] in self?.onOpen?(item) }
             view.onSaveToDesktop = { [weak self] in self?.onSaveToDesktop?(item) }
@@ -433,6 +438,33 @@ final class ThumbStrip: NSView {
         }
         previewWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+    }
+
+    // MARK: - Selection
+
+    /// ⌘-click on a card: add it to the picked set, or take it out again.
+    func toggleSelection(_ thumb: ThumbView) {
+        if selection.contains(thumb.item.url) {
+            selection.remove(thumb.item.url)
+        } else {
+            selection.insert(thumb.item.url)
+        }
+        thumb.isSelected = selection.contains(thumb.item.url)
+    }
+
+    /// A plain press elsewhere drops the pick, the way a Finder window does.
+    func clearSelection() {
+        guard !selection.isEmpty else { return }
+        selection.removeAll()
+        for thumb in thumbs { thumb.isSelected = false }
+    }
+
+    /// What a drag starting on `thumb` should carry. A picked card carries the
+    /// whole pick; an unpicked one carries just itself.
+    func dragItems(for thumb: ThumbView) -> [ShotItem] {
+        guard selection.contains(thumb.item.url) else { return [thumb.item] }
+        let picked = thumbs.filter { selection.contains($0.item.url) }.map(\.item)
+        return picked.isEmpty ? [thumb.item] : picked
     }
 
     /// Drops the newest sheet onto the rope (the last one in layout order).
@@ -496,6 +528,8 @@ final class ThumbView: NSView, NSDraggingSource {
     let item: ShotItem
     weak var strip: ThumbStrip?
     var tilt: CGFloat = 0 { didSet { needsDisplay = true } }
+    /// Picked with ⌘; drawn with the same blue ring the snip frame uses.
+    var isSelected = false { didSet { needsDisplay = true } }
 
     var onCopy: (() -> Void)?
     var onOpen: (() -> Void)?
@@ -508,12 +542,16 @@ final class ThumbView: NSView, NSDraggingSource {
         didSet { needsDisplay = true }
     }
     private var dragged = false
+    /// Set by a ⌘-press so the following mouse-up toggles instead of copying.
+    private var toggledOnDown = false
     private var pinsOnDrop = false
     private var dragStartScreen: CGPoint = .zero
+    private var dragURLs: [URL] = []
     private var cardCache: CGImage?
     private var isRenderingCache = false
     private var cacheSize: NSSize = .zero
     private var cacheHover = false
+    private var cacheSelected = false
     private var cacheScale: CGFloat = 0
     private var dropOffset: CGFloat = 0 {
         didSet { needsDisplay = true }
@@ -661,7 +699,7 @@ final class ThumbView: NSView, NSDraggingSource {
         // scaling, shadow, text) for each card, twenty-four times a second.
         let scale = window?.backingScaleFactor ?? 2
         let stale = cardCache == nil || cacheSize != bounds.size
-            || cacheHover != hovering || cacheScale != scale
+            || cacheHover != hovering || cacheSelected != isSelected || cacheScale != scale
 
         if isRenderingCache {
             // Collecting the cache: draw the sheet at rest, no rotation.
@@ -673,6 +711,7 @@ final class ThumbView: NSView, NSDraggingSource {
             cardCache = renderCard(size: bounds.size)
             cacheSize = bounds.size
             cacheHover = hovering
+            cacheSelected = isSelected
             cacheScale = scale
         }
 
@@ -821,6 +860,16 @@ final class ThumbView: NSView, NSDraggingSource {
         border.lineWidth = 1
         border.stroke()
 
+        // The picked card wears the same blue frame as a snip selection, so
+        // "these are the ones that will come with me" is obvious.
+        if isSelected {
+            let ring = NSBezierPath(roundedRect: frameRect.insetBy(dx: -2.5, dy: -2.5),
+                                    xRadius: 10.5, yRadius: 10.5)
+            ring.lineWidth = 2.5
+            FrameStyle.accent.withAlphaComponent(0.95).setStroke()
+            ring.stroke()
+        }
+
         drawStamp(below: card)
         if GIFFile.isAnimated(item.url) { drawGIFBadge(in: frameRect) }
     }
@@ -885,11 +934,20 @@ final class ThumbView: NSView, NSDraggingSource {
 
     override func mouseDown(with event: NSEvent) {
         dragged = false
+        toggledOnDown = false
         cancelPreview()
+        if event.modifierFlags.contains(.command) {
+            // ⌘-click picks and unpicks; it must not also copy on mouse-up.
+            toggledOnDown = true
+            strip?.toggleSelection(self)
+        } else if let strip, !strip.selection.isEmpty, !strip.selection.contains(item.url) {
+            // A plain press on something that is not in the pick starts over.
+            strip.clearSelection()
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard !dragged else { return }
+        guard !dragged, !toggledOnDown else { return }
         if event.clickCount >= 2 {
             onOpen?()
         } else {
@@ -908,12 +966,22 @@ final class ThumbView: NSView, NSDraggingSource {
         // it.
         pinsOnDrop = event.modifierFlags.contains(.option)
         dragStartScreen = window?.convertPoint(toScreen: event.locationInWindow) ?? .zero
-        let writer: NSPasteboardWriting = pinsOnDrop
-            ? PinDragItem(url: item.url)
-            : (item.url as NSURL)
-        let draggingItem = NSDraggingItem(pasteboardWriter: writer)
-        draggingItem.setDraggingFrame(bounds, contents: item.thumb)
-        let session = beginDraggingSession(with: [draggingItem], event: event, source: self)
+
+        // A picked card brings the whole pick; an unpicked one brings itself.
+        let shots = strip?.dragItems(for: self) ?? [item]
+        dragURLs = shots.map(\.url)
+        let draggingItems = shots.enumerated().map { index, shot -> NSDraggingItem in
+            let writer: NSPasteboardWriting = pinsOnDrop
+                ? PinDragItem(url: shot.url)
+                : (shot.url as NSURL)
+            let draggingItem = NSDraggingItem(pasteboardWriter: writer)
+            // Fan the picked cards out a little so the drag reads as several.
+            let offset = CGFloat(min(index, 5)) * 6
+            draggingItem.setDraggingFrame(bounds.offsetBy(dx: offset, dy: offset),
+                                          contents: shot.thumb)
+            return draggingItem
+        }
+        let session = beginDraggingSession(with: draggingItems, event: event, source: self)
         if pinsOnDrop {
             // Nobody accepts the private type, and the default behaviour for a
             // drag that ends "unaccepted" is to fly the thumbnail back to the
@@ -934,15 +1002,29 @@ final class ThumbView: NSView, NSDraggingSource {
         // `dragged` would stay set, silently keeping this sheet's hover preview
         // off until it is clicked again. Only `mouseDown` clears it otherwise.
         dragged = false
-        guard pinsOnDrop else { return }
+        guard pinsOnDrop else {
+            dragURLs.removeAll()
+            return
+        }
         pinsOnDrop = false
         // Esc lands here with an empty operation and the pointer barely moved;
         // that is a cancelled drag, not a request to pin.
         let cancelled = operation.isEmpty
             && hypot(screenPoint.x - dragStartScreen.x,
                      screenPoint.y - dragStartScreen.y) < 12
-        if cancelled { return }
-        PinController.shared.pinFile(at: item.url, centeredAt: screenPoint)
+        if cancelled {
+            dragURLs.removeAll()
+            return
+        }
+        let urls = dragURLs.isEmpty ? [item.url] : dragURLs
+        for (index, url) in urls.enumerated() {
+            // Cascade the pins so a multi-shot drop is not one pile.
+            let offset = CGFloat(index) * 14
+            PinController.shared.pinFile(at: url,
+                                         centeredAt: CGPoint(x: screenPoint.x + offset,
+                                                             y: screenPoint.y - offset))
+        }
+        dragURLs.removeAll()
     }
 
     override func rightMouseDown(with event: NSEvent) {

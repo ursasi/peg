@@ -144,6 +144,17 @@ enum ScrollSelfTest {
         check("stitched pixels match the document", produced == expected,
               "got \(produced.count) bytes want \(expected.count)")
 
+        if let preview = stitcher.previewImage(maxWidth: 120, maxHeight: 120) {
+            check("preview fits its box",
+                  preview.width > 0 && preview.height > 0
+                      && preview.width <= 120 && preview.height <= 120,
+                  "got \(preview.width)x\(preview.height)")
+            check("preview keeps the tall shape", preview.height > preview.width,
+                  "got \(preview.width)x\(preview.height)")
+        } else {
+            check("preview image", false)
+        }
+
         // Annotation rendering: shapes are stored in image pixels and must
         // land at the same place in the flattened bitmap.
         print("annotations")

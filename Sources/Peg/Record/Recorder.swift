@@ -280,9 +280,10 @@ final class RecordHUD: NSPanel {
     }
 }
 
-/// A thin red frame around the region being recorded. It is a separate window
-/// from the HUD and is never captured: the recorder's content filter excludes
-/// this app.
+/// A thin blue frame around the region being recorded, drawn exactly like the
+/// one the snip shows while the region is being chosen. It is a separate
+/// window from the HUD and is never captured: the recorder's content filter
+/// excludes this app.
 final class RecordBorder: NSPanel {
     private var region: CGRect
     private var screenRef: NSScreen
@@ -316,53 +317,11 @@ final class RecordBorder: NSPanel {
 }
 
 private final class RecordBorderView: NSView {
-    private var phase: CGFloat = 0
-    private var march: Timer?
-
     override var isFlipped: Bool { true }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        march?.invalidate()
-        march = nil
-        guard window != nil else { return }
-        // One slow-moving part is enough to say "recording"; it replaced a hard
-        // 3 pt red box.
-        let timer = Timer(timeInterval: 1.0 / 20.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.phase += 0.9
-                self.needsDisplay = true
-            }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        march = timer
-    }
-
-    deinit { march?.invalidate() }
-
     override func draw(_ dirtyRect: NSRect) {
-        let frame = bounds.insetBy(dx: 9, dy: 9)
-        guard frame.width > 0, frame.height > 0 else { return }
-        let outline = NSBezierPath(roundedRect: frame, xRadius: 12, yRadius: 12)
-
-        // A soft halo rather than a hard stroke: it reads as the edge of the
-        // recording instead of a red rectangle laid over the window.
-        let glow = NSShadow()
-        glow.shadowColor = NSColor.systemRed.withAlphaComponent(0.45)
-        glow.shadowBlurRadius = 9
-        glow.set()
-        outline.lineWidth = 2
-        NSColor.systemRed.withAlphaComponent(0.85).setStroke()
-        outline.stroke()
-        NSShadow().set()
-
-        // Marching hairline inside it.
-        let marching = NSBezierPath(roundedRect: frame.insetBy(dx: 2.5, dy: 2.5),
-                                    xRadius: 10, yRadius: 10)
-        marching.setLineDash([7, 6], count: 2, phase: phase)
-        marching.lineWidth = 1.5
-        NSColor.white.withAlphaComponent(0.6).setStroke()
-        marching.stroke()
+        // The panel is inset by 10 pt so the frame can sit on the region itself
+        // rather than on the window edge.
+        FrameStyle.draw(in: bounds.insetBy(dx: 10, dy: 10))
     }
 }

@@ -154,6 +154,55 @@ struct ScrollStitcher {
                        intent: .defaultIntent)
     }
 
+    /// A small stand-in for `image()`, sampled straight from the row store so a
+    /// live preview does not have to materialise the whole tall picture on
+    /// every captured frame. Aspect ratio is preserved and the result fits in
+    /// `maxWidth` × `maxHeight` pixels.
+    func previewImage(maxWidth: Int = 512, maxHeight: Int = 512) -> CGImage? {
+        let rowBytes = width * 4
+        let footerRows = stickyBottom > 0 ? lastFooter.count / rowBytes : 0
+        let total = rows + footerRows
+        guard width > 0, total > 0, maxWidth > 0, maxHeight > 0 else { return nil }
+
+        let scale = min(1, min(Double(maxWidth) / Double(width),
+                               Double(maxHeight) / Double(total)))
+        let targetWidth = max(1, Int((Double(width) * scale).rounded()))
+        let targetHeight = max(1, Int((Double(total) * scale).rounded()))
+        var output = [UInt8](repeating: 0, count: targetWidth * targetHeight * 4)
+
+        for ty in 0..<targetHeight {
+            // Centre each target pixel on the source row it represents.
+            let sourceRow = min(total - 1, ((2 * ty + 1) * total) / (2 * targetHeight))
+            let fromFooter = sourceRow >= rows
+            let rowOffset = (fromFooter ? sourceRow - rows : sourceRow) * rowBytes
+            let source = fromFooter ? lastFooter : bytes
+            guard rowOffset >= 0, rowOffset + rowBytes <= source.count else { continue }
+            let destinationRow = ty * targetWidth * 4
+            for tx in 0..<targetWidth {
+                let sourceColumn = min(width - 1, ((2 * tx + 1) * width) / (2 * targetWidth))
+                let from = rowOffset + sourceColumn * 4
+                let to = destinationRow + tx * 4
+                output[to] = source[from]
+                output[to + 1] = source[from + 1]
+                output[to + 2] = source[from + 2]
+                output[to + 3] = source[from + 3]
+            }
+        }
+
+        guard let provider = CGDataProvider(data: Data(output) as CFData) else { return nil }
+        return CGImage(width: targetWidth,
+                       height: targetHeight,
+                       bitsPerComponent: 8,
+                       bitsPerPixel: 32,
+                       bytesPerRow: targetWidth * 4,
+                       space: CGColorSpaceCreateDeviceRGB(),
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                       provider: provider,
+                       decode: nil,
+                       shouldInterpolate: true,
+                       intent: .defaultIntent)
+    }
+
     /// Exposed for the headless self test only.
     var flattenedRows: [UInt8] { bytes }
 
