@@ -403,7 +403,6 @@ final class SelectionView: NSView, NSTextViewDelegate {
             drawSizeLabel(for: selection)
             if session?.mode == .markup {
                 drawActionBar(for: selection)
-                if session?.tool != nil { drawHint() }
             }
         } else if let hover = session?.windowHover, hover.width > 8, hover.height > 8 {
             // Un-dim the window under the pointer and ring it: one click grabs it.
@@ -420,7 +419,6 @@ final class SelectionView: NSView, NSTextViewDelegate {
             drawCrosshair()
         } else {
             drawCrosshair()
-            drawHint()
         }
 
         if let toast {
@@ -1055,33 +1053,6 @@ final class SelectionView: NSView, NSTextViewDelegate {
         guard let configured = base.withSymbolConfiguration(config) else { return nil }
         symbolCache[name] = configured
         return configured
-    }
-
-    private func drawHint() {
-        let text: String
-        if session?.tool != nil {
-            text = "拖拽即可标注　⌘Z 撤销　Esc 回到选区　⇧⏎ 换行"
-        } else if session?.mode == .direct {
-            text = "拖拽选区，松开即复制并保存　L 滚动长截图　Esc 取消"
-        } else {
-            text = "拖拽选区　R/O/A/P/H/T/M/B 选工具　⏎ 复制并保存　P 贴到屏幕\nL 滚动长截图　Esc 取消"
-        }
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        paragraph.lineSpacing = 4
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-            .foregroundColor: NSColor.white,
-            .paragraphStyle: paragraph
-        ]
-        let size = (text as NSString).size(withAttributes: attributes)
-        let box = CGRect(x: bounds.midX - size.width / 2 - 18,
-                         y: bounds.midY - size.height / 2 - 10,
-                         width: size.width + 36,
-                         height: size.height + 20)
-        NSColor.black.withAlphaComponent(0.62).setFill()
-        NSBezierPath(roundedRect: box, xRadius: 10, yRadius: 10).fill()
-        (text as NSString).draw(in: box.insetBy(dx: 18, dy: 10), withAttributes: attributes)
     }
 
     private func drawToast(_ text: String) {

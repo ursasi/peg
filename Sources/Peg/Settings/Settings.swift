@@ -68,7 +68,7 @@ enum Prefs {
     static var historyDays: Int {
         get {
             UserDefaults.standard.object(forKey: "historyDays") == nil
-                ? 30
+                ? 7
                 : UserDefaults.standard.integer(forKey: "historyDays")
         }
         set { UserDefaults.standard.set(newValue, forKey: "historyDays") }
@@ -217,7 +217,7 @@ final class SettingsWindow: NSWindowController {
         replayRow.orientation = .horizontal
         replayRow.spacing = 8
 
-        retentionPopup.addItems(withTitles: ["7 天", "30 天", "90 天", "永久保留"])
+        retentionPopup.addItems(withTitles: ["3 天", "7 天", "30 天", "90 天", "永久保留"])
         retentionPopup.target = self
         retentionPopup.action = #selector(retentionChanged)
         let retentionRow = NSStackView(views: [retentionPopup,
@@ -286,7 +286,7 @@ final class SettingsWindow: NSWindowController {
         qualityLabel.stringValue = "\(Int((Prefs.quality * 100).rounded()))%"
         qualityRow.isHidden = Prefs.format != .jpeg
         let days = Prefs.historyDays
-        retentionPopup.selectItem(at: days == 0 ? 3 : days <= 7 ? 0 : days <= 30 ? 1 : 2)
+        retentionPopup.selectItem(at: days == 0 ? 4 : days <= 3 ? 0 : days <= 7 ? 1 : days <= 30 ? 2 : 3)
         replayPopup.selectItem(at: Prefs.sessionLimit == 10 ? 0 : Prefs.sessionLimit == 50 ? 2 : 1)
         copyCheck.state = Prefs.autoCopy ? .on : .off
         refreshShortcutTitles()
@@ -328,8 +328,8 @@ final class SettingsWindow: NSWindowController {
     }
 
     @objc private func retentionChanged() {
-        let values = [7, 30, 90, 0]
-        Prefs.historyDays = values[max(0, min(3, retentionPopup.indexOfSelectedItem))]
+        let values = [3, 7, 30, 90, 0]
+        Prefs.historyDays = values[max(0, min(4, retentionPopup.indexOfSelectedItem))]
         _ = HistoryStore.purge()
     }
 

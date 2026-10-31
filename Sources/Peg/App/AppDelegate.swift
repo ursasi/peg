@@ -239,11 +239,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
 
-        let snip = NSMenuItem(title: "截图", action: #selector(snip), keyEquivalent: "")
+        let snip = NSMenuItem(title: "截图并保存", action: #selector(snip), keyEquivalent: "")
         snip.target = self
         menu.addItem(snip)
 
-        let snipMarkup = NSMenuItem(title: "截图并标注", action: #selector(snipMarkup), keyEquivalent: "")
+        let snipMarkup = NSMenuItem(title: "截图并批注", action: #selector(snipMarkup), keyEquivalent: "")
         snipMarkup.target = self
         menu.addItem(snipMarkup)
 
@@ -255,11 +255,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scroll.target = self
         menu.addItem(scroll)
 
+        let pastePin = NSMenuItem(title: "贴图展示", action: #selector(pastePin), keyEquivalent: "")
+        pastePin.target = self
+        menu.addItem(pastePin)
+
+        menu.addItem(.separator())
+
         let shelf = NSMenuItem(title: "晾图绳", action: #selector(toggleShelf), keyEquivalent: "")
         shelf.target = self
         menu.addItem(shelf)
-
-        menu.addItem(.separator())
 
         let sizeItem = NSMenuItem(title: "晾图绳大小", action: nil, keyEquivalent: "")
         let sizeMenu = NSMenu()
@@ -274,10 +278,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(sizeItem)
 
         let history = NSMenuItem(title: "截图历史", action: #selector(openHistory), keyEquivalent: "")
+        history.target = self
         menu.addItem(history)
-
-        let pastePin = NSMenuItem(title: "贴到屏幕", action: #selector(pastePin), keyEquivalent: "")
-        menu.addItem(pastePin)
 
         let dock = NSMenuItem(title: "在 Dock 中显示", action: #selector(toggleDock), keyEquivalent: "")
         dock.target = self
