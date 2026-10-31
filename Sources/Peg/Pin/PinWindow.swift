@@ -191,7 +191,9 @@ final class PinController {
 
 final class PinWindow: NSPanel {
     /// Room around the picture for the drop shadow and the corner outline.
-    static let padding: CGFloat = 14
+    static let padding: CGFloat = 24
+    /// The paper mat between the picture and its shadow.
+    static let mat: CGFloat = 4
 
     var onClose: (() -> Void)?
     private var pixelSize: NSSize
@@ -282,37 +284,55 @@ final class PinImageView: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
+    /// A pin is often not the key window when the pointer reaches it. Without
+    /// this the first click only makes the window key and the drag is lost —
+    /// which felt like "click once, then you can move it".
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func draw(_ dirtyRect: NSRect) {
         let content = bounds.insetBy(dx: PinWindow.padding, dy: PinWindow.padding)
         guard content.width > 0, content.height > 0 else { return }
         let radius = max(4, min(12, content.width * 0.02))
-        let shape = NSBezierPath(roundedRect: content, xRadius: radius, yRadius: radius)
+        let mat = content.insetBy(dx: -PinWindow.mat, dy: -PinWindow.mat)
+        let matRadius = radius + PinWindow.mat
 
-        // The shadow comes from the picture's own alpha, so the rounded corners
-        // stay transparent instead of sitting on a white plate.
+        // A paper mat behind the picture, then a real shadow under it. A bare
+        // hairline was too easy to mistake for the desktop when the shot and
+        // the wallpaper were both light.
         let shadow = NSShadow()
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.55)
         shadow.shadowBlurRadius = 18
-        shadow.shadowOffset = NSSize(width: 0, height: -3)
+        shadow.shadowOffset = NSSize(width: 0, height: -4)
         shadow.set()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)).draw(in: content)
+        NSColor(calibratedWhite: 0.97, alpha: 1).setFill()
+        NSBezierPath(roundedRect: mat, xRadius: matRadius, yRadius: matRadius).fill()
         NSShadow().set()
 
-        // Two hairlines, light outside and dark inside, so the edge shows up on
-        // both a white page and a dark wallpaper.
-        let outer = NSBezierPath(roundedRect: content.insetBy(dx: -0.5, dy: -0.5),
-                                 xRadius: radius + 0.5, yRadius: radius + 0.5)
-        outer.lineWidth = 1
-        NSColor.white.withAlphaComponent(0.30).setStroke()
-        outer.stroke()
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: content, xRadius: radius, yRadius: radius).addClip()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)).draw(in: content)
+        NSGraphicsContext.restoreGraphicsState()
 
-        shape.lineWidth = 1
-        NSColor.black.withAlphaComponent(0.28).setStroke()
-        shape.stroke()
+        // A dark rim on the picture separates a white screenshot from its own
+        // white mat; the mat's darker edge separates the pin from a light page.
+        let pictureEdge = NSBezierPath(roundedRect: content.insetBy(dx: 0.5, dy: 0.5),
+                                       xRadius: radius, yRadius: radius)
+        pictureEdge.lineWidth = 1
+        NSColor.black.withAlphaComponent(0.18).setStroke()
+        pictureEdge.stroke()
+
+        let outer = NSBezierPath(roundedRect: mat.insetBy(dx: 0.6, dy: 0.6),
+                                 xRadius: matRadius, yRadius: matRadius)
+        outer.lineWidth = 1.2
+        NSColor.black.withAlphaComponent(0.38).setStroke()
+        outer.stroke()
     }
 
     override func mouseDown(with event: NSEvent) {
+        // Clicking a pin that sits behind another one should raise it and move
+        // it in the same gesture, instead of needing a first click to select it.
+        window?.orderFrontRegardless()
         window?.makeKey()
         if event.clickCount == 2 {
             onDoubleClick?()
@@ -321,11 +341,23 @@ final class PinImageView: NSView {
         window?.performDrag(with: event)
     }
 
+    /// The shadow margin must not swallow a click that visibly belongs to the
+    /// pin behind it; the mat itself is part of the pin.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        let inset = PinWindow.padding - PinWindow.mat
+        guard bounds.insetBy(dx: inset, dy: inset).contains(local) else {
+            return nil
+        }
+        return self
+    }
+
     override func scrollWheel(with event: NSEvent) {
         onZoom?(event.scrollingDeltaY)
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        window?.orderFrontRegardless()
         let menu = NSMenu()
         menu.addItem(menuItem("复制") { [weak self] in self?.onCopy?() })
         menu.addItem(menuItem("保存到 Peg 文件夹") { [weak self] in self?.onSave?() })

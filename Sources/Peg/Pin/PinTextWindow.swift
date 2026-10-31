@@ -266,11 +266,18 @@ final class PinTextSurface: NSView {
         }
     }
 
+    /// A text pin has the same first-click problem as a picture pin: the
+    /// press has to both focus it and start the drag.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     /// The card drags as one piece; hold ⌥ to select text instead. Without
     /// this the text view swallowed every press and the pin could not be moved.
     override func hitTest(_ point: NSPoint) -> NSView? {
-        let local = superview.map { convert(point, from: $0) } ?? point
-        guard bounds.contains(local) else { return nil }
+        let local = convert(point, from: superview)
+        let card = bounds.insetBy(dx: PinTextWindow.padding, dy: PinTextWindow.padding)
+        // Transparent padding is shadow, not card. Let clicks there reach a pin
+        // that is visibly underneath.
+        guard card.contains(local) else { return nil }
         if NSEvent.modifierFlags.contains(.option) {
             return super.hitTest(point)
         }
@@ -278,6 +285,7 @@ final class PinTextSurface: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        window?.orderFrontRegardless()
         window?.makeKey()
         if event.clickCount == 2 {
             onCloseWindow?()
@@ -300,6 +308,7 @@ final class PinTextSurface: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        window?.orderFrontRegardless()
         let menu = NSMenu()
         let copy = ClosureMenuItem(title: "复制全部文字") { [weak self] in self?.onCopy?() }
         menu.addItem(copy)
