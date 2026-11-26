@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var dockItem: NSMenuItem?
     private var captureSelfItem: NSMenuItem?
+    private var lineSizeMenu: NSMenu?
     private var debugTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -276,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         sizeItem.submenu = sizeMenu
         menu.addItem(sizeItem)
+        lineSizeMenu = sizeMenu
 
         let history = NSMenuItem(title: "截图历史", action: #selector(openHistory), keyEquivalent: "")
         history.target = self
@@ -382,8 +384,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let sizes = LineSize.allCases
         guard sender.tag >= 0, sender.tag < sizes.count else { return }
         Shelf.shared.setSize(sizes[sender.tag])
-        for item in sender.menu?.items ?? [] {
-            item.state = item.tag == sender.tag ? .on : .off
+        refreshLineSizeItems()
+    }
+
+    /// The settings window can change the same thing, so both read the stored
+    /// value instead of toggling a tick blind.
+    func refreshLineSizeItems() {
+        for item in lineSizeMenu?.items ?? [] {
+            let index = item.tag
+            guard index >= 0, index < LineSize.allCases.count else { continue }
+            item.state = Shelf.lineSize == LineSize.allCases[index] ? .on : .off
         }
     }
 

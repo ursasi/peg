@@ -110,6 +110,12 @@ enum Prefs {
     }
 }
 
+/// A flipped container so the settings stack starts at the top of the scroll
+/// view instead of being pinned to its bottom.
+final class SettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 /// A plain settings window: where shots go, what format, and clipboard habits.
 @MainActor
 final class SettingsWindow: NSWindowController {
@@ -129,6 +135,14 @@ final class SettingsWindow: NSWindowController {
     private var shortcutButtons: [ShortcutAction: ShortcutRecorderButton] = [:]
     private let retentionPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let replayPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let lineSizeControl = NSSegmentedControl(labels: LineSize.allCases.map { $0.title },
+                                                      trackingMode: .selectOne,
+                                                      target: nil,
+                                                      action: nil)
+    private let dwellPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let lingerPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    /// The scrolling column of rows, kept so the window can be fitted to it.
+    private let stack = NSStackView()
 
     init() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 812),
@@ -149,6 +163,7 @@ final class SettingsWindow: NSWindowController {
         window.center()
         super.init(window: window)
         buildUI()
+        fitToContent()
         refresh()
     }
 
@@ -163,16 +178,37 @@ final class SettingsWindow: NSWindowController {
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
-        let stack = NSStackView()
+
+        // The shortcut list is long, and with the line's own settings it is
+        // longer than a laptop display. Scrolling beats a window that runs
+        // under the Dock and clips its last rows.
+        let scroller = NSScrollView()
+        scroller.translatesAutoresizingMaskIntoConstraints = false
+        scroller.hasVerticalScroller = true
+        scroller.autohidesScrollers = true
+        scroller.drawsBackground = false
+        scroller.borderType = .noBorder
+        content.addSubview(scroller)
+
+        let document = SettingsDocumentView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        scroller.documentView = document
+
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 16
+        stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(stack)
+        document.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 22),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -22),
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 20)
+            scroller.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            scroller.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            scroller.topAnchor.constraint(equalTo: content.topAnchor),
+            scroller.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            document.widthAnchor.constraint(equalTo: scroller.contentView.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 22),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -22),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -22)
         ])
 
         // Where screenshots go.
@@ -237,6 +273,28 @@ final class SettingsWindow: NSWindowController {
         selfCheck.target = self
         selfCheck.action = #selector(selfChanged)
 
+        // The clothesline: how big it is, and when it comes and goes.
+        let shelfTitle = NSTextField(labelWithString: "晾图绳")
+        shelfTitle.font = .systemFont(ofSize: 12, weight: .semibold)
+
+        lineSizeControl.target = self
+        lineSizeControl.action = #selector(lineSizeChanged)
+        lineSizeControl.segmentStyle = .rounded
+        lineSizeControl.setWidth(58, forSegment: 0)
+        lineSizeControl.setWidth(58, forSegment: 1)
+        lineSizeControl.setWidth(58, forSegment: 2)
+
+        dwellPopup.addItems(withTitles: ShelfMetrics.dwellTitles)
+        dwellPopup.target = self
+        dwellPopup.action = #selector(dwellChanged)
+        lingerPopup.addItems(withTitles: ShelfMetrics.lingerTitles)
+        lingerPopup.target = self
+        lingerPopup.action = #selector(lingerChanged)
+
+        let sizeRow = Self.shelfRow("大小", control: lineSizeControl, tail: nil)
+        let dwellRow = Self.shelfRow("悬停屏幕最上端", control: dwellPopup, tail: "后出现")
+        let lingerRow = Self.shelfRow("指针离开", control: lingerPopup, tail: "后收起")
+
         // Shortcuts, one row per action.
         let shortcutTitle = NSTextField(labelWithString: "快捷键")
         shortcutTitle.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -271,10 +329,43 @@ final class SettingsWindow: NSWindowController {
 
         for view in [folderTitle, folderRow, formatTitle, formatControl, qualityRow,
                      historyTitle, retentionRow, replayRow, clipTitle, copyCheck, roundCheck, selfCheck,
+                     shelfTitle, sizeRow, dwellRow, lingerRow,
                      shortcutTitle] + shortcutRows + [resetRow, note] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
+    }
+
+    /// A label, a control, and an optional trailing hint, lined up like the
+    /// other rows in this window.
+    private static func shelfRow(_ title: String, control: NSView, tail: String?) -> NSStackView {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 12)
+        var views: [NSView] = [label, control]
+        if let tail {
+            let hint = NSTextField(labelWithString: tail)
+            hint.font = .systemFont(ofSize: 11)
+            hint.textColor = .secondaryLabelColor
+            views.append(hint)
+        }
+        views.append(NSView())
+        let row = NSStackView(views: views)
+        row.orientation = .horizontal
+        row.spacing = 8
+        return row
+    }
+
+    /// As tall as the rows need and the display allows. Anything past that
+    /// scrolls, so the window never runs under the Dock.
+    private func fitToContent() {
+        guard let window, let content = window.contentView else { return }
+        content.layoutSubtreeIfNeeded()
+        let wanted = stack.fittingSize.height + 42
+        let cap = (NSScreen.main?.visibleFrame.height ?? 900) - 24
+        let height = min(max(wanted, 360), max(360, cap))
+        guard abs(content.frame.height - height) > 1 else { return }
+        window.setContentSize(NSSize(width: content.frame.width, height: height))
+        window.center()
     }
 
     private func refresh() {
@@ -292,6 +383,32 @@ final class SettingsWindow: NSWindowController {
         refreshShortcutTitles()
         roundCheck.state = Prefs.roundedCorners ? .on : .off
         selfCheck.state = Prefs.captureSelf ? .on : .off
+        lineSizeControl.selectedSegment = LineSize.allCases.firstIndex(of: ShelfMetrics.lineSize) ?? 1
+        dwellPopup.selectItem(at: Self.nearestIndex(of: ShelfMetrics.dwell, in: ShelfMetrics.dwellChoices))
+        lingerPopup.selectItem(at: Self.nearestIndex(of: ShelfMetrics.linger, in: ShelfMetrics.lingerChoices))
+    }
+
+    /// A stored value may sit between presets (an older default, say); the
+    /// popup shows the closest one without rewriting the preference.
+    private static func nearestIndex(of value: TimeInterval, in choices: [TimeInterval]) -> Int {
+        choices.enumerated().min { abs($0.element - value) < abs($1.element - value) }?.offset ?? 0
+    }
+
+    @objc private func lineSizeChanged() {
+        let sizes = LineSize.allCases
+        let index = max(0, min(sizes.count - 1, lineSizeControl.selectedSegment))
+        Shelf.shared.setSize(sizes[index])
+        AppDelegate.shared?.refreshLineSizeItems()
+    }
+
+    @objc private func dwellChanged() {
+        let choices = ShelfMetrics.dwellChoices
+        ShelfMetrics.dwell = choices[max(0, min(choices.count - 1, dwellPopup.indexOfSelectedItem))]
+    }
+
+    @objc private func lingerChanged() {
+        let choices = ShelfMetrics.lingerChoices
+        ShelfMetrics.linger = choices[max(0, min(choices.count - 1, lingerPopup.indexOfSelectedItem))]
     }
 
     @objc private func chooseFolder() {

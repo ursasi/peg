@@ -26,6 +26,11 @@ final class Shelf {
     /// to slide away when it actually has something to slide away from.
     var isVisible: Bool { isShown }
     private var hideWork: DispatchWorkItem?
+    private var revealWork: DispatchWorkItem?
+    private var slideTimer: Timer?
+    /// Bumped by every slide, so a hide that was already running when the line
+    /// is asked back cannot order the panel out from under the new slide.
+    private var slideGeneration = 0
     private var pollTimer: Timer?
     private var currentScreen: NSScreen?
     private var content: ShelfContentView?
@@ -163,6 +168,8 @@ final class Shelf {
     }
 
     func reveal(on screen: NSScreen? = nil, autoHideAfter seconds: TimeInterval? = nil) {
+        revealWork?.cancel()
+        revealWork = nil
         guard let target = screen ?? Displays.underMouse() ?? NSScreen.main else { return }
         currentScreen = target
         hideWork?.cancel()
@@ -181,24 +188,68 @@ final class Shelf {
             panel.orderFrontRegardless()
         } else {
             isShown = true
-            panel.alphaValue = 0
-            panel.setFrame(shown.offsetBy(dx: 0, dy: 20), display: false)
-            panel.orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.12
-                context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                panel.animator().alphaValue = 1
-                panel.animator().setFrame(shown, display: true)
-            }
+            slideIn(panel, to: shown, from: shown.offsetBy(dx: 0, dy: 34))
+            // The rope comes down first; the sheets lift onto it one behind the
+            // next once there is something to see.
+            content?.settleAll()
         }
 
         content?.startWave()
         if let seconds { scheduleHide(after: seconds) }
     }
 
+    /// Slides the line down with a small overshoot, the way a rope with paper
+    /// on it settles. The old 0.12 s fade read as a flicker rather than as
+    /// something arriving.
+    private func slideIn(_ panel: NSPanel, to: NSRect, from: NSRect) {
+        slideTimer?.invalidate()
+        slideGeneration += 1
+        let generation = slideGeneration
+        let start = Date()
+        let duration: TimeInterval = 0.34
+
+        panel.alphaValue = 0
+        panel.setFrame(from, display: false)
+        panel.orderFrontRegardless()
+
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak panel] timer in
+            MainActor.assumeIsolated {
+                guard let self, let panel, generation == self.slideGeneration else {
+                    timer.invalidate()
+                    return
+                }
+                let t = min(1, Date().timeIntervalSince(start) / duration)
+                let eased = Shelf.settle(t)
+                let y = from.minY + (to.minY - from.minY) * eased
+                panel.setFrame(NSRect(x: to.minX, y: y, width: to.width, height: to.height),
+                               display: true)
+                // Fade quickly, then let the motion carry the rest: the line is
+                // readable while it is still moving.
+                panel.alphaValue = min(1, CGFloat(t / 0.3))
+                if t >= 1 {
+                    timer.invalidate()
+                    self.slideTimer = nil
+                    panel.setFrame(to, display: true)
+                    panel.alphaValue = 1
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        slideTimer = timer
+    }
+
+    /// A damped spring normalised so 0 is fully raised and 1 is settled. It
+    /// overshoots once by about 8%, which is what makes the line read as
+    /// weighted rather than as a window being placed on screen.
+    private static func settle(_ t: CGFloat) -> CGFloat {
+        1 - exp(-5.5 * t) * cos(7 * t)
+    }
+
     func hideNow(animated: Bool = true) {
         hideWork?.cancel()
         hideWork = nil
+        revealWork?.cancel()
+        revealWork = nil
         PreviewPanel.shared.hide()
         content?.stopWave()
         // A pick belongs to the visit; when the line slides away, the blue
@@ -208,24 +259,52 @@ final class Shelf {
         isShown = false
 
         guard animated else {
+            slideTimer?.invalidate()
+            slideTimer = nil
+            slideGeneration += 1
             panel.alphaValue = 0
-            panel.orderOut(nil)
+            finishHide(panel)
             return
         }
 
-        var frame = panel.frame
-        frame.origin.y += 20
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.14
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().alphaValue = 0
-            panel.animator().setFrame(frame, display: true)
-        }, completionHandler: {
+        slideTimer?.invalidate()
+        slideGeneration += 1
+        let generation = slideGeneration
+        let from = panel.frame
+        var to = from
+        to.origin.y += 28
+        let start = Date()
+        let duration: TimeInterval = 0.19
+
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self, weak panel] timer in
             MainActor.assumeIsolated {
-                panel.orderOut(nil)
-                panel.alphaValue = 1
+                guard let self, let panel, generation == self.slideGeneration else {
+                    timer.invalidate()
+                    return
+                }
+                let t = min(1, Date().timeIntervalSince(start) / duration)
+                // Ease in: it lifts away slowly, then goes.
+                let eased = t * t
+                panel.setFrame(NSRect(x: to.minX,
+                                      y: from.minY + (to.minY - from.minY) * eased,
+                                      width: to.width,
+                                      height: to.height),
+                               display: true)
+                panel.alphaValue = 1 - t
+                if t >= 1 {
+                    timer.invalidate()
+                    self.slideTimer = nil
+                    self.finishHide(panel)
+                }
             }
-        })
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        slideTimer = timer
+    }
+
+    private func finishHide(_ panel: NSPanel) {
+        panel.orderOut(nil)
+        panel.alphaValue = 1
     }
 
     private func scheduleHide(after seconds: TimeInterval) {
@@ -297,7 +376,10 @@ final class Shelf {
             let barIsDrawn = screen.visibleFrame.maxY < screen.frame.maxY - 1
             let inDrawnBar = barIsDrawn && point.y >= Displays.menuBarBottom(of: screen) - 1
             if atTopEdge || inDrawnBar {
-                reveal(on: screen)
+                armReveal(on: screen)
+            } else {
+                revealWork?.cancel()
+                revealWork = nil
             }
             return
         }
@@ -310,7 +392,35 @@ final class Shelf {
             return
         }
         if point.y < frame.minY - 6 || currentScreen !== screen {
-            scheduleHide(after: 0.3)
+            if ShelfMetrics.linger <= 0 {
+                hideNow()
+            } else {
+                scheduleHide(after: ShelfMetrics.linger)
+            }
         }
+    }
+
+    /// The pointer has reached the top edge. The line only drops once it has
+    /// rested there for the configured dwell: reaching for a menu should not
+    /// summon it.
+    private func armReveal(on screen: NSScreen) {
+        guard revealWork == nil else { return }
+        let dwell = ShelfMetrics.dwell
+        guard dwell > 0 else {
+            reveal(on: screen)
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.revealWork = nil
+                // A snip can start while the pointer is resting on the edge;
+                // the line must not drop in the middle of it.
+                guard !self.isShown, !SnipSession.shared.isActive else { return }
+                self.reveal(on: screen)
+            }
+        }
+        revealWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + dwell, execute: work)
     }
 }

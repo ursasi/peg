@@ -37,10 +37,10 @@ The one thing that goes online is 检查更新 in the menu, and only when you as
 | **Inline annotation** | 8 tools (rectangle, ellipse, arrow, pen, marker, text, mosaic, blur) drawn straight onto the frozen screen. What you draw is what you get. |
 | **Scroll capture** | Manually scroll a region; frames are aligned by row fingerprints and stitched, both downwards and upwards, with a live preview of the finished picture beside the frame. |
 | **GIF recording** | Frame a region, record up to 20 s at 12 fps, stop with the same shortcut. The same blue frame as the snip marks exactly what is being recorded. |
-| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, ⌘-click to pick several and drag them out together, drag anywhere (⌥-drag to pin it where you drop), double-click to open. The clothesline idea comes from Tendedero. |
+| **Clothesline** | Recent shots hang from a slowly rippling rope with a timestamp under each sheet; hover for a preview, click to copy, ⌘-click to pick several and drag them out together, drag anywhere (⌥-drag to pin it where you drop), double-click to open. How fast it drops and leaves, and how big it is, are in settings. The clothesline idea comes from Tendedero. |
 | **Pins** | Any shot floats above other windows, movable and zoomable, with a shadow and outline so it never melts into the wallpaper. Clipboard text pins too, as a dark code card with a line-number gutter and light syntax colouring; drag it as one piece, hold ⌥ to select inside. |
 | **History** | `⌃⌥H` browses everything on disk with search, annotate, pin and trash. |
-| **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon, and editable shortcuts. |
+| **Settings** | Save folder, PNG/JPEG + quality, auto-copy, history retention, rounded corners, dock icon, the line's size and timing, and editable shortcuts. |
 
 ## A closer look
 
@@ -79,7 +79,7 @@ syntax colouring; copied images become pins that float above other windows.
 | `⌃⌥L` | Long capture — frame a region and scroll; the frames are stitched |
 | `⌃⌥V` | Pin: press once for the most recent copy, again to walk back through recent copies and then the shots on disk (images as pictures, text as code cards); stops repeating the same picture |
 | `⌃⌥H` | Screenshot history |
-| `,` `.` | Inside a snip: walk back / forward through recent captures — the frame, the selection and the marks come back, ready to edit |
+| `<` `>` | Inside a snip: walk back / forward through recent captures — the frame, the selection and the marks come back, ready to edit (the `,` `.` keys, with or without ⇧) |
 | `⌃⌥S` | Show / hide the clothesline |
 
 Hold `⇧` with a snip to keep Peg's own windows in the frame — the clothesline, a

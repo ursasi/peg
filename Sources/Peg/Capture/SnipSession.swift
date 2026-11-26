@@ -577,7 +577,11 @@ final class SnipSession {
     /// registered as global hot keys — they only act inside a snip.
     private func matches(_ shortcut: Shortcut, _ event: NSEvent) -> Bool {
         guard event.keyCode == UInt16(truncatingIfNeeded: shortcut.keyCode) else { return false }
-        let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        var flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        // A bare key binding is the same key with or without ⇧. `<` and `,` are
+        // one physical key, and the settings show the angle bracket, so the key
+        // has to answer to both spellings.
+        if shortcut.modifiers == 0 { flags.remove(.shift) }
         return Shortcut.carbonModifiers(from: flags) == shortcut.modifiers
     }
 

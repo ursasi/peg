@@ -29,6 +29,27 @@ enum ShelfMetrics {
     }
 
     static var scale: CGFloat { lineSize.scale }
+
+    /// How long the pointer has to rest on the top edge before the line drops.
+    /// 0 means the line comes down the moment the pointer touches the edge.
+    static var dwell: TimeInterval {
+        get { UserDefaults.standard.object(forKey: "shelfDwell") as? Double ?? 0.35 }
+        set { UserDefaults.standard.set(newValue, forKey: "shelfDwell") }
+    }
+
+    /// How long the line stays up after the pointer leaves it.
+    static var linger: TimeInterval {
+        get { UserDefaults.standard.object(forKey: "shelfLinger") as? Double ?? 0.3 }
+        set { UserDefaults.standard.set(newValue, forKey: "shelfLinger") }
+    }
+
+    /// Presets offered in settings; a stored value is snapped to the nearest.
+    static let dwellChoices: [TimeInterval] = [0, 0.2, 0.35, 0.6, 1]
+    static let lingerChoices: [TimeInterval] = [0, 0.3, 0.6, 1.2, 2]
+
+    static let dwellTitles = ["立刻", "0.2 秒", "0.35 秒", "0.6 秒", "1 秒"]
+    static let lingerTitles = ["立刻", "0.3 秒", "0.6 秒", "1.2 秒", "2 秒"]
+
     static var cardMaxHeight: CGFloat { (76 * scale).rounded() }
     static var cardMaxWidth: CGFloat { (210 * scale).rounded() }
     static var pegHeight: CGFloat { (15 * scale).rounded() }
@@ -157,6 +178,12 @@ final class ShelfContentView: NSView {
     /// Hangs the newest sheet on the line; called once the line is on screen.
     func dropInNewest() {
         strip.dropInNewest()
+    }
+
+    /// The whole line has just come down: let every sheet settle onto the rope,
+    /// one behind the next.
+    func settleAll() {
+        strip.enterAll()
     }
 
     func clearSelection() {
@@ -484,6 +511,14 @@ final class ThumbStrip: NSView {
         thumbs.last?.dropIn()
     }
 
+    /// The line just slid in: the sheets fade up onto the rope one after the
+    /// other, oldest to newest, as if the rope were being unrolled.
+    func enterAll() {
+        for (index, thumb) in thumbs.enumerated() {
+            thumb.enter(after: 0.06 + Double(index) * 0.022)
+        }
+    }
+
     /// Debug hook: pretend the pointer is on one card.
     func debugHover(_ index: Int) {
         guard index >= 0, index < thumbs.count else {
@@ -573,6 +608,11 @@ final class ThumbView: NSView, NSDraggingSource {
         didSet { needsDisplay = true }
     }
     private var swingTimer: Timer?
+    /// 0...1 entrance while the whole line is sliding in.
+    private var entrance: CGFloat = 1 {
+        didSet { needsDisplay = true }
+    }
+    private var entranceTimer: Timer?
 
     init(item: ShotItem) {
         self.item = item
@@ -622,6 +662,29 @@ final class ThumbView: NSView, NSDraggingSource {
         }
         RunLoop.main.add(timer, forMode: .common)
         dropTimer = timer
+    }
+
+    /// The line came down: this sheet lifts onto the rope after `delay`, one
+    /// card behind the next, so the drop reads as weight on a rope.
+    func enter(after delay: TimeInterval) {
+        entranceTimer?.invalidate()
+        entrance = 0
+        let begin = Date().addingTimeInterval(max(0, delay))
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            let elapsed = Date().timeIntervalSince(begin)
+            guard elapsed >= 0 else { return }
+            let progress = min(1, elapsed / 0.38)
+            self.entrance = 1 - pow(1 - progress, 3)
+            if progress >= 1 {
+                timer.invalidate()
+                self.entranceTimer = nil
+                self.entrance = 1
+                self.nudge(2.2)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        entranceTimer = timer
     }
 
     /// A damped swing around the peg.
@@ -728,8 +791,14 @@ final class ThumbView: NSView, NSDraggingSource {
         }
 
         context.saveGState()
-        context.translateBy(x: card.midX, y: cardTop + dropOffset)
+        context.setAlpha(entrance)
+        context.translateBy(x: card.midX,
+                            y: cardTop + dropOffset + (1 - entrance) * 16)
         context.rotate(by: tilt + swing)
+        // A sheet settling onto the rope grows the last few percent: a fade on
+        // its own reads as a slide, a tiny scale reads as weight.
+        let settle = 0.94 + 0.06 * entrance
+        context.scaleBy(x: settle, y: settle)
         context.translateBy(x: -card.midX, y: -cardTop)
         if let cgImage = cardCache {
             // The cached image comes from cacheDisplay, which renders in the
